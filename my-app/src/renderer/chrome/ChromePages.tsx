@@ -58,14 +58,14 @@ const CHROME_PAGES: ChromePageDef[] = [
   { name: 'history', description: 'Browsing history', implemented: true },
   { name: 'extensions', description: 'Manage browser extensions', implemented: true },
   { name: 'inspect', description: 'DevTools remote debugging targets', implemented: true },
-  { name: 'bookmarks', description: 'Bookmark manager', implemented: false },
-  { name: 'flags', description: 'Experimental features', implemented: false },
-  { name: 'components', description: 'Installed browser components', implemented: false },
-  { name: 'net-internals', description: 'Network diagnostic tools', implemented: false },
-  { name: 'network-errors', description: 'Network error code reference', implemented: false },
-  { name: 'policy', description: 'Browser policies', implemented: false },
-  { name: 'webrtc-internals', description: 'WebRTC diagnostic info', implemented: false },
-  { name: 'media-internals', description: 'Media pipeline diagnostics', implemented: false },
+  { name: 'bookmarks', description: 'Bookmark manager', implemented: true },
+  { name: 'flags', description: 'Experimental features', implemented: true },
+  { name: 'components', description: 'Installed browser components', implemented: true },
+  { name: 'net-internals', description: 'Network diagnostic tools', implemented: true },
+  { name: 'network-errors', description: 'Network error code reference', implemented: true },
+  { name: 'policy', description: 'Browser policies', implemented: true },
+  { name: 'webrtc-internals', description: 'WebRTC status and limitations', implemented: true },
+  { name: 'media-internals', description: 'Media playback status and limitations', implemented: true },
 ];
 
 // ---------------------------------------------------------------------------
@@ -274,7 +274,7 @@ function DinoPage(): React.ReactElement {
     <div className="cp cp--dino">
       <div className="dino__container">
         <h1 className="cp__title">No internet</h1>
-        <p className="cp__subtitle">The dinosaur game is not yet available in The Browser.</p>
+        <p className="cp__subtitle">Disconnect from the internet to launch the dinosaur game in The Browser.</p>
         <div className="dino__art">
           <pre className="dino__ascii">{`
             __
@@ -286,6 +286,32 @@ function DinoPage(): React.ReactElement {
           `}</pre>
         </div>
         <p className="cp__subtitle">Try disconnecting from the internet and navigating to any page for the real experience.</p>
+      </div>
+    </div>
+  );
+}
+
+function FlagsPage(): React.ReactElement {
+  return (
+    <div className="cp">
+      <h1 className="cp__title">Flags</h1>
+      <p className="cp__subtitle">Experimental feature controls are limited in The Browser today.</p>
+      <div className="cp__stub">
+        <p>
+          Chromium&apos;s full `chrome://flags` surface is not wired up here yet, so this page does not expose
+          searchable experiment toggles, restart-required indicators, or per-flag descriptions.
+        </p>
+        <p>
+          What is available now: a dedicated page that acknowledges the URL, explains the current gap,
+          and avoids falling back to a generic unavailable stub.
+        </p>
+        <button
+          type="button"
+          className="cp__back-btn"
+          onClick={() => chromeAPI.openInternalPage('about')}
+        >
+          View all chrome:// pages
+        </button>
       </div>
     </div>
   );
@@ -496,6 +522,162 @@ function InspectPage(): React.ReactElement {
   );
 }
 
+function MediaInternalsPage(): React.ReactElement {
+  return (
+    <div className="cp">
+      <h1 className="cp__title">Media Internals</h1>
+      <p className="cp__subtitle">Playback diagnostics are limited in The Browser today.</p>
+      <div className="cp__stub">
+        <p>
+          Chromium&apos;s live media pipeline inspector is not wired up here yet, so this page does not expose
+          per-player events, decoder graphs, or stream logs.
+        </p>
+        <p>
+          What is available now: a dedicated page that confirms the URL exists and explains the current gap
+          instead of sending you to a generic unavailable screen.
+        </p>
+        <button
+          type="button"
+          className="cp__back-btn"
+          onClick={() => chromeAPI.openInternalPage('about')}
+        >
+          View all chrome:// pages
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WebRtcInternalsPage(): React.ReactElement {
+  return (
+    <div className="cp">
+      <h1 className="cp__title">WebRTC Internals</h1>
+      <p className="cp__subtitle">Connection diagnostics are limited in The Browser today.</p>
+      <div className="cp__stub">
+        <p>
+          Chromium&apos;s full WebRTC inspector is not wired up here yet, so this page does not expose
+          peer-connection timelines, RTP stats dumps, or downloadable event logs.
+        </p>
+        <p>
+          What is available now: a dedicated page that acknowledges the URL, explains the current gap,
+          and avoids pretending the complete diagnostics stack already exists.
+        </p>
+        <button
+          type="button"
+          className="cp__back-btn"
+          onClick={() => chromeAPI.openInternalPage('about')}
+        >
+          View all chrome:// pages
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PolicyPage(): React.ReactElement {
+  return (
+    <div className="cp">
+      <h1 className="cp__title">Policy</h1>
+      <p className="cp__subtitle">Enterprise policy inspection is limited in The Browser today.</p>
+      <div className="cp__stub">
+        <p>
+          Chromium&apos;s policy viewer is not connected here yet, so this page does not expose active policy
+          values, source precedence, or reload controls.
+        </p>
+        <p>
+          What is available now: a dedicated page that acknowledges `chrome://policy`, explains the current
+          limitation, and avoids falling back to a generic unavailable stub.
+        </p>
+        <button
+          type="button"
+          className="cp__back-btn"
+          onClick={() => chromeAPI.openInternalPage('about')}
+        >
+          View all chrome:// pages
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NetworkErrorsPage(): React.ReactElement {
+  return (
+    <div className="cp">
+      <h1 className="cp__title">Network Errors</h1>
+      <p className="cp__subtitle">Network error code coverage is limited in The Browser today.</p>
+      <div className="cp__stub">
+        <p>
+          Chromium&apos;s full `chrome://network-errors` reference is not mirrored here yet, so this page does not
+          expose the complete net error catalog or the upstream debugging notes that ship with Chrome.
+        </p>
+        <p>
+          What is available now: a dedicated page that acknowledges the URL, explains the current gap,
+          and avoids falling back to a generic unavailable stub.
+        </p>
+        <button
+          type="button"
+          className="cp__back-btn"
+          onClick={() => chromeAPI.openInternalPage('about')}
+        >
+          View all chrome:// pages
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NetInternalsPage(): React.ReactElement {
+  return (
+    <div className="cp">
+      <h1 className="cp__title">Net Internals</h1>
+      <p className="cp__subtitle">Network diagnostics are limited in The Browser today.</p>
+      <div className="cp__stub">
+        <p>
+          Chromium&apos;s full `chrome://net-internals` tooling is not wired up here yet, so this page does not
+          expose live socket pools, DNS events, proxy resolution traces, or exportable net logs.
+        </p>
+        <p>
+          What is available now: a dedicated page that acknowledges the URL, explains the current gap,
+          and avoids pretending the complete diagnostics stack already exists.
+        </p>
+        <button
+          type="button"
+          className="cp__back-btn"
+          onClick={() => chromeAPI.openInternalPage('about')}
+        >
+          View all chrome:// pages
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ComponentsPage(): React.ReactElement {
+  return (
+    <div className="cp">
+      <h1 className="cp__title">Components</h1>
+      <p className="cp__subtitle">Installed component details are limited in The Browser today.</p>
+      <div className="cp__stub">
+        <p>
+          Chromium&apos;s full `chrome://components` viewer is not wired up here yet, so this page does not
+          expose installed component versions, last update checks, or on-demand update controls.
+        </p>
+        <p>
+          What is available now: a dedicated page that acknowledges the URL, explains the current gap,
+          and avoids falling back to a generic unavailable stub.
+        </p>
+        <button
+          type="button"
+          className="cp__back-btn"
+          onClick={() => chromeAPI.openInternalPage('about')}
+        >
+          View all chrome:// pages
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StubPage({ name }: { name: string }): React.ReactElement {
   const def = CHROME_PAGES.find((p) => p.name === name);
   return (
@@ -539,8 +721,22 @@ export function ChromePages(): React.ReactElement {
       return <SandboxPage />;
     case 'dino':
       return <DinoPage />;
+    case 'flags':
+      return <FlagsPage />;
     case 'inspect':
       return <InspectPage />;
+    case 'webrtc-internals':
+      return <WebRtcInternalsPage />;
+    case 'media-internals':
+      return <MediaInternalsPage />;
+    case 'policy':
+      return <PolicyPage />;
+    case 'network-errors':
+      return <NetworkErrorsPage />;
+    case 'net-internals':
+      return <NetInternalsPage />;
+    case 'components':
+      return <ComponentsPage />;
     default:
       return <StubPage name={page} />;
   }
