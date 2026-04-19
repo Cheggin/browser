@@ -945,10 +945,11 @@ export class TabManager {
     if (!view) return;
     const wc = view.webContents;
 
-    // One-shot post-load restore: replay scroll position. Electron's public
-    // API doesn't let us inject a full back/forward history stack into a new
-    // WebContents, so history restore is a best-effort no-op today; the
-    // captured entries live on the record for future use.
+    // One-shot post-load restore: replay the active entry plus scroll state.
+    // Electron still does not provide a supported API for seeding a fresh
+    // WebContents with an arbitrary captured back/forward stack, so the
+    // additional history entries remain attached to the closed-tab record
+    // for future restore work instead of being replayed here.
     const onFinishLoad = () => {
       wc.removeListener('did-finish-load', onFinishLoad);
       if (record.scrollY != null && record.scrollY > 0) {
