@@ -34,6 +34,20 @@ vi.mock('node:fs', () => ({
   unlinkSync: vi.fn(),
 }));
 
+vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn(() => '/tmp/test-user-data'),
+  },
+  session: {
+    defaultSession: {
+      clearStorageData: vi.fn(async () => undefined),
+      clearCache: vi.fn(async () => undefined),
+      clearHistory: vi.fn(async () => undefined),
+      clearAuthCache: vi.fn(async () => undefined),
+    },
+  },
+}));
+
 // keytar is optional: stub findCredentials to return empty so the revoke path
 // doesn't hit the real native module.
 vi.mock('keytar', () => ({
@@ -41,7 +55,7 @@ vi.mock('keytar', () => ({
   deletePassword: vi.fn(async () => true),
 }));
 
-import { performSignOut } from '../../../src/main/identity/SignOutController';
+import { performSignOut, turnOffSync } from '../../../src/main/identity/SignOutController';
 
 // ---------------------------------------------------------------------------
 // Fake stores — only implement the surfaces SignOutController actually needs
@@ -58,6 +72,7 @@ interface FakeKeychainStore {
 
 interface Deletable {
   deleteAll: ReturnType<typeof vi.fn>;
+  flushSync: ReturnType<typeof vi.fn>;
 }
 
 interface AppLocalStores {
@@ -82,10 +97,10 @@ function makeKeychainStore(): FakeKeychainStore {
 
 function makeStores(): AppLocalStores {
   return {
-    bookmarkStore: { deleteAll: vi.fn() },
-    historyStore: { clearAll: vi.fn() },
-    passwordStore: { deleteAllPasswords: vi.fn() },
-    autofillStore: { deleteAll: vi.fn() },
+    bookmarkStore: { deleteAll: vi.fn(), flushSync: vi.fn() },
+    historyStore: { clearAll: vi.fn(), flushSync: vi.fn() },
+    passwordStore: { deleteAllPasswords: vi.fn(), flushSync: vi.fn() },
+    autofillStore: { deleteAll: vi.fn(), flushSync: vi.fn() },
   };
 }
 
@@ -178,5 +193,46 @@ describe('SignOutController.performSignOut', () => {
       keychain as never,
     );
     expect(keychain.deleteToken).toHaveBeenCalledWith('user@example.com');
+  });
+});
+
+describe('SignOutController.turnOffSync', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('persists sync_enabled=false for the current account', async () => {
+    const savedStates: Array<{ email: string; sync_enabled?: boolean; agent_name?: string }> = [];
+    const accountStore = {
+      load: vi
+        .fn()
+        .mockReturnValueOnce({ email: 'user@example.com', agent_name: 'Atlas', sync_enabled: true })
+        .mockReturnValueOnce({ email: 'user@example.com', agent_name: 'Atlas', sync_enabled: false }),
+      save: vi.fn((value) => {
+        savedStates.push(value);
+      }),
+    };
+
+    const result = await turnOffSync(accountStore as never);
+
+    expect(result).toEqual({ success: true });
+    expect(accountStore.save).toHaveBeenCalledWith({
+      email: 'user@example.com',
+      agent_name: 'Atlas',
+      sync_enabled: false,
+    });
+    expect(savedStates[0]?.sync_enabled).toBe(false);
+  });
+
+  it('returns success=false when no account is loaded', async () => {
+    const accountStore = {
+      load: vi.fn(() => null),
+      save: vi.fn(),
+    };
+
+    const result = await turnOffSync(accountStore as never);
+
+    expect(result).toEqual({ success: false });
+    expect(accountStore.save).not.toHaveBeenCalled();
   });
 });
