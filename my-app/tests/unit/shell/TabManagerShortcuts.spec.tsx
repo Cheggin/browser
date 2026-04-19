@@ -13,6 +13,19 @@ import { TabManager } from '../../../src/main/tabs/TabManager';
 
 type FakeWebContents = {
   executeJavaScript: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+  getURL: ReturnType<typeof vi.fn>;
+  openDevTools: ReturnType<typeof vi.fn>;
+  isDevToolsOpened: ReturnType<typeof vi.fn>;
+  closeDevTools: ReturnType<typeof vi.fn>;
+  once: ReturnType<typeof vi.fn>;
+  print: ReturnType<typeof vi.fn>;
+  getTitle: ReturnType<typeof vi.fn>;
+  id: number;
+  devToolsWebContents?: {
+    focus: ReturnType<typeof vi.fn>;
+    executeJavaScript: ReturnType<typeof vi.fn>;
+  };
 };
 
 function makeManager(selection = 'selected text'): TabManager {
@@ -25,6 +38,15 @@ function makeManager(selection = 'selected text'): TabManager {
 
   const webContents: FakeWebContents = {
     executeJavaScript,
+    stop: vi.fn(),
+    getURL: vi.fn(() => 'https://example.com/current'),
+    openDevTools: vi.fn(),
+    isDevToolsOpened: vi.fn(() => false),
+    closeDevTools: vi.fn(),
+    once: vi.fn(),
+    print: vi.fn(),
+    getTitle: vi.fn(() => 'Example Title'),
+    id: 42,
   };
 
   const manager = Object.create(TabManager.prototype) as TabManager & {
@@ -50,7 +72,9 @@ function makeManager(selection = 'selected text'): TabManager {
   manager.lastFindQuery = new Map();
   manager.safeSend = vi.fn();
   manager.caretBrowsingEnabled = false;
+  (manager as any).devToolsDockMode = 'right';
   manager.getActiveWebContents = () => webContents;
+  (manager as any).createTab = vi.fn();
 
   return manager;
 }
@@ -118,5 +142,75 @@ describe('TabManager shortcut helpers', () => {
 
     expect(nav.goBack).toHaveBeenCalledTimes(1);
     expect(nav.goForward).toHaveBeenCalledTimes(1);
+  });
+
+  it('relayouts when the side-panel width changes', () => {
+    const manager = makeManager() as TabManager & {
+      relayout: ReturnType<typeof vi.fn>;
+      sidePanelWidth: number;
+    };
+    manager.relayout = vi.fn();
+    manager.sidePanelWidth = 0;
+
+    manager.setSidePanelWidth(320);
+    expect(manager.sidePanelWidth).toBe(320);
+    expect(manager.relayout).toHaveBeenCalledTimes(1);
+
+    manager.setSidePanelWidth(320);
+    expect(manager.relayout).toHaveBeenCalledTimes(1);
+
+    manager.setSidePanelWidth(999);
+    expect(manager.sidePanelWidth).toBe(600);
+    expect(manager.relayout).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens a view-source tab for the active page', () => {
+    const manager = makeManager() as TabManager & { createTab: ReturnType<typeof vi.fn> };
+
+    manager.openViewSourceForActive();
+
+    expect(manager.createTab).toHaveBeenCalledWith('view-source:https://example.com/current');
+  });
+
+  it('stops the active tab loading', () => {
+    const manager = makeManager();
+    const wc = manager.getActiveWebContents()!;
+
+    manager.stopActive();
+
+    expect(wc.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('duplicates the active tab URL into a new tab', () => {
+    const manager = makeManager() as TabManager & { createTab: ReturnType<typeof vi.fn> };
+
+    manager.duplicateActiveTab();
+
+    expect(manager.createTab).toHaveBeenCalledWith('https://example.com/current');
+  });
+
+  it('opens and toggles DevTools for the active tab', () => {
+    const manager = makeManager();
+    const wc = manager.getActiveWebContents()!;
+
+    manager.openDevToolsForActive();
+    expect(wc.openDevTools).toHaveBeenCalledWith({ mode: 'right' });
+
+    manager.toggleDevToolsForActive();
+    expect(wc.openDevTools).toHaveBeenCalledTimes(2);
+
+    wc.isDevToolsOpened.mockReturnValueOnce(true);
+    manager.toggleDevToolsForActive();
+    expect(wc.closeDevTools).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns print-preview info for the active tab', () => {
+    const manager = makeManager();
+
+    expect(manager.getActiveTabPrintInfo()).toEqual({
+      webContentsId: 42,
+      title: 'Example Title',
+      url: 'https://example.com/current',
+    });
   });
 });
