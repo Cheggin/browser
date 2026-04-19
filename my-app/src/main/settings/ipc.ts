@@ -16,8 +16,10 @@ import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import { mainLogger } from '../logger';
 import type { AccountStore } from '../identity/AccountStore';
 import type { KeychainStore } from '../identity/KeychainStore';
+import type { OAuthClient } from '../identity/OAuthClient';
 import { getSettingsWindow, openSettingsWindow } from './SettingsWindow';
 import { assertString, assertOneOf } from '../ipc-validators';
+import type { GoogleOAuthScope } from '../../shared/types';
 import {
   clearBrowsingData,
   DATA_TYPES,
@@ -115,6 +117,7 @@ const CH_SET_LIVE_CAPTION         = 'settings:set-live-caption';
 
 let _accountStore: AccountStore | null = null;
 let _keychainStore: KeychainStore | null = null;
+let _oauthClient: OAuthClient | null = null;
 // Lazy getters — resolved at call-time so DownloadManager can be wired up after
 // registerSettingsHandlers() is first called (it's created inside openShellAndWire).
 let _getPasswordStore:  () => PasswordStore | null  = () => null;
@@ -482,12 +485,74 @@ function handleGetOAuthScopes(): Array<{ scope: string; label: string; granted: 
   return result;
 }
 
-function handleReConsentScope(_event: Electron.IpcMainInvokeEvent, scope: string): void {
-  mainLogger.warn(CH_RE_CONSENT_SCOPE, {
+async function handleReConsentScope(
+  _event: Electron.IpcMainInvokeEvent,
+  scope: string,
+): Promise<void> {
+  const validatedScope = assertOneOf(
     scope,
-    msg: 'Re-consent requested — full OAuth flow is not yet implemented',
+    'scope',
+    GOOGLE_SCOPE_LIST.map(({ scope: candidate }) => candidate) as readonly ScopeName[],
+  );
+
+  const account = _accountStore?.load();
+  if (!account?.email) {
+    throw new Error('You need to be signed in before you can update Google permissions.');
+  }
+  if (!_keychainStore) {
+    throw new Error('Google token storage is not ready yet. Restart the app and try again.');
+  }
+  if (!_oauthClient) {
+    throw new Error('Google sign-in is not ready yet. Restart the app and try again.');
+  }
+
+  const currentTokens = await _keychainStore.getToken(account.email);
+  const requestedScopes = Array.from(
+    new Set([
+      ...(account.oauth_scopes ?? []),
+      ...(currentTokens?.scopes ?? []),
+      validatedScope,
+    ]),
+  ) as GoogleOAuthScope[];
+
+  mainLogger.info(CH_RE_CONSENT_SCOPE, {
+    account: account.email,
+    requestedScope: validatedScope,
+    requestedScopeCount: requestedScopes.length,
   });
-  throw new Error('Re-consent OAuth flow is not yet implemented');
+
+  const tokens = await _oauthClient.startAuthFlow(requestedScopes);
+  if (tokens.email !== account.email) {
+    mainLogger.warn(`${CH_RE_CONSENT_SCOPE}.accountMismatch`, {
+      requestedScope: validatedScope,
+      currentAccount: account.email,
+      oauthAccount: tokens.email,
+    });
+    throw new Error(
+      `Google returned ${tokens.email}, but this profile is signed in as ${account.email}. ` +
+      'Sign out first if you need to switch accounts.',
+    );
+  }
+
+  await _keychainStore.setToken(account.email, {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: tokens.expires_at,
+    scopes: tokens.scopes,
+  });
+
+  _accountStore?.save({
+    ...account,
+    email: tokens.email,
+    oauth_scopes: tokens.scopes,
+    scopes_granted: tokens.scopes.length > 0,
+  });
+
+  mainLogger.info(`${CH_RE_CONSENT_SCOPE}.ok`, {
+    account: account.email,
+    requestedScope: validatedScope,
+    grantedScopeCount: tokens.scopes.length,
+  });
 }
 
 async function handleFactoryReset(): Promise<void> {
@@ -919,6 +984,7 @@ function handleCloseWindow(): void {
 export interface RegisterSettingsHandlersOptions {
   accountStore:        AccountStore;
   keychainStore:       KeychainStore;
+  oauthClient:         OAuthClient;
   getPasswordStore?:   () => PasswordStore | null;
   getDownloadManager?: () => DownloadManager | null;
   /**
@@ -935,6 +1001,7 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
 
   _accountStore    = opts.accountStore;
   _keychainStore   = opts.keychainStore;
+  _oauthClient     = opts.oauthClient;
   _resetStores     = opts.factoryResetStores ?? null;
   // Stash getters so handleClearData can resolve the live instances at call-time.
   if (opts.getPasswordStore)  _getPasswordStore  = opts.getPasswordStore;
@@ -1030,6 +1097,7 @@ export function unregisterSettingsHandlers(): void {
 
   _accountStore      = null;
   _keychainStore     = null;
+  _oauthClient       = null;
   _getPasswordStore  = () => null;
   _getDownloadManager = () => null;
 

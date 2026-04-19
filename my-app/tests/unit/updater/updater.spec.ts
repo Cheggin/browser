@@ -12,6 +12,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { execSync } from 'node:child_process';
+import path from 'node:path';
 
 // ---------------------------------------------------------------------------
 // electron-updater mock — captured so individual tests can inspect it.
@@ -70,6 +72,26 @@ vi.mock('electron-updater', () => ({
 // ---------------------------------------------------------------------------
 type UpdaterModule = typeof import('../../../src/main/updater');
 type ElectronModule = typeof import('electron');
+
+function getCurrentRepo(): { owner: string; repo: string } {
+  const remote = execSync('git remote get-url origin', {
+    cwd: path.resolve(__dirname, '..', '..', '..'),
+    encoding: 'utf8',
+  }).trim();
+
+  const match =
+    remote.match(/github\.com[:/](?<owner>[^/]+)\/(?<repo>[^/.]+)(?:\.git)?$/) ??
+    remote.match(/https:\/\/github\.com\/(?<owner>[^/]+)\/(?<repo>[^/.]+)(?:\.git)?$/);
+
+  if (!match?.groups?.owner || !match?.groups?.repo) {
+    throw new Error(`Could not parse GitHub remote: ${remote}`);
+  }
+
+  return {
+    owner: match.groups.owner,
+    repo: match.groups.repo,
+  };
+}
 
 async function loadUpdaterFresh(
   packaged: boolean,
@@ -149,15 +171,16 @@ describe('updater (Issue #202)', () => {
       process.env.NODE_ENV = 'production';
     });
 
-    it('configures GitHub Releases feed for browser-use/desktop-app', async () => {
+    it('configures GitHub Releases feed for the current GitHub repo', async () => {
+      const { owner, repo } = getCurrentRepo();
       const { updater } = await loadUpdaterFresh(true);
 
       await updater.initUpdater();
 
       expect(fakeAutoUpdater.feedURL).toEqual({
         provider: 'github',
-        owner: 'browser-use',
-        repo: 'desktop-app',
+        owner,
+        repo,
       });
 
       updater.stopUpdater();

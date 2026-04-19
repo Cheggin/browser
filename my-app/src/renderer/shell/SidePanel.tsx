@@ -1,6 +1,6 @@
 /**
  * SidePanel: toggleable side panel hosting built-in panels (Bookmarks, History,
- * Reading List, Customize). Positioned absolutely in the shell window, occupying
+ * Customize). Positioned absolutely in the shell window, occupying
  * the right (or left) side below the chrome. The main process shrinks the
  * WebContentsView to reveal this panel behind it.
  */
@@ -13,7 +13,7 @@ import { CustomizePanel } from './CustomizePanel';
 // Constants
 // ---------------------------------------------------------------------------
 
-export type SidePanelId = 'bookmarks' | 'history' | 'reading-list' | 'customize';
+export type SidePanelId = 'bookmarks' | 'history' | 'customize';
 export type SidePanelPosition = 'left' | 'right';
 
 const MIN_PANEL_WIDTH = 280;
@@ -37,16 +37,6 @@ const PANEL_DEFS: Array<{ id: SidePanelId; label: string; icon: React.ReactNode 
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.3" />
         <path d="M8 5v3.5l2.5 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
-  {
-    id: 'reading-list',
-    label: 'Reading List',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <rect x="3" y="2.5" width="10" height="11" rx="1" stroke="currentColor" strokeWidth="1.3" />
-        <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
       </svg>
     ),
   },
@@ -246,18 +236,6 @@ function HistoryPanel({ onNavigate }: { onNavigate: (url: string) => void }): Re
   );
 }
 
-function ReadingListPanel(): React.ReactElement {
-  return (
-    <div className="side-panel__empty">
-      Reading list is empty.<br />
-      <span style={{ color: 'var(--color-fg-tertiary)', fontSize: '11px' }}>
-        Right-click a tab and choose "Add to Reading List" to save pages for later.
-      </span>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Date grouping helper
 // ---------------------------------------------------------------------------
 
@@ -393,7 +371,6 @@ export function SidePanel({
       <div className="side-panel__content">
         {activePanel === 'bookmarks' && <BookmarksPanel onNavigate={handleNavigate} />}
         {activePanel === 'history' && <HistoryPanel onNavigate={handleNavigate} />}
-        {activePanel === 'reading-list' && <ReadingListPanel />}
         {activePanel === 'customize' && <CustomizePanel />}
       </div>
     </div>

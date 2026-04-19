@@ -75,7 +75,7 @@ const SHOULD_SKIP = !BINARY_OK || !MAIN_OK;
 const SKIP_REASON = !BINARY_OK
   ? `Electron binary missing: ${ELECTRON_BIN}`
   : !MAIN_OK
-    ? `Built main.js missing: ${MAIN_JS} — run npm run build first`
+    ? `Built main.js missing: ${MAIN_JS} — run npm run package first`
     : '';
 
 if (SHOULD_SKIP) {

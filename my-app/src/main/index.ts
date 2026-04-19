@@ -185,6 +185,7 @@ if (started) {
 // Constants
 // ---------------------------------------------------------------------------
 const INCOGNITO_PARTITION_PREFIX = 'incognito';
+const REPORT_ISSUE_URL = 'https://github.com/Cheggin/browser/issues';
 
 // ---------------------------------------------------------------------------
 // App state
@@ -991,6 +992,7 @@ app.whenReady().then(async () => {
   registerSettingsHandlers({
     accountStore,
     keychainStore,
+    oauthClient,
     getPasswordStore:   () => passwordStore,
     getDownloadManager: () => downloadManager,
     factoryResetStores: {
@@ -2108,7 +2110,7 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           label: 'Report an Issue…',
           click: () => {
             mainLogger.debug('shortcuts.reportIssue');
-            shell.openExternal('https://github.com/anthropics/desktop-app/issues');
+            shell.openExternal(REPORT_ISSUE_URL);
           },
         },
       ],
@@ -2294,6 +2296,14 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
       label: 'Extensions',
       click: () => { openExtensionsWindow(); },
     },
+    {
+      label: 'Switch Profile…',
+      accelerator: 'Ctrl+Shift+M',
+      click: () => {
+        mainLogger.debug('shortcuts.switchProfile.threedot');
+        createProfilePickerWindow();
+      },
+    },
     { type: 'separator' },
     {
       label: `Zoom (${zoomPercent}%)`,
@@ -2404,7 +2414,7 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
     {
       label: 'Help',
       submenu: [
-        { label: 'Report an Issue…', click: () => { shell.openExternal('https://github.com/anthropics/desktop-app/issues'); } },
+        { label: 'Report an Issue…', click: () => { shell.openExternal(REPORT_ISSUE_URL); } },
       ],
     },
     { type: 'separator' },

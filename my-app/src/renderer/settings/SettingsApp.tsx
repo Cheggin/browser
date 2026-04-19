@@ -692,27 +692,33 @@ function GoogleScopesTab(): React.ReactElement {
   const [loading, setLoading]       = useState(true);
   const [reconsentId, setReconsentId] = useState<string | null>(null);
 
+  async function refreshScopes(): Promise<void> {
+    const nextScopes = await window.settingsAPI.getOAuthScopes();
+    setScopes(nextScopes);
+  }
+
   useEffect(() => {
-    void window.settingsAPI.getOAuthScopes().then((s) => {
-      setScopes(s);
+    void refreshScopes().then(() => {
       setLoading(false);
     });
   }, []);
 
   async function handleReconsent(scope: string): Promise<void> {
+    const target = scopes.find((candidate) => candidate.scope === scope);
     setReconsentId(scope);
     try {
       await window.settingsAPI.reConsentScope(scope);
+      await refreshScopes();
       toast.show({
         variant: 'success',
-        title: 'Re-consent complete',
-        message: `Scope: ${scope}`,
+        title: 'Google access updated',
+        message: `${target?.label ?? scope} permission is now available for this profile.`,
       });
     } catch (err) {
       toast.show({
-        variant: 'warning',
-        title: 'Re-consent not available',
-        message: 'Re-consent is not yet available. Please sign out and sign back in to update permissions.',
+        variant: 'error',
+        title: 'Failed to update Google access',
+        message: (err as Error).message,
       });
     } finally {
       setReconsentId(null);
@@ -758,7 +764,7 @@ function GoogleScopesTab(): React.ReactElement {
                 size="sm"
                 onClick={() => void handleReconsent(s.scope)}
                 loading={reconsentId === s.scope}
-                title="Re-consent is not yet available"
+                title="Open Google consent in your browser"
               >
                 Re-consent
               </Button>
@@ -1656,12 +1662,6 @@ interface ContentCategoryRow {
   description: string;
   defaultState: CategoryState;
   allowedStates: CategoryState[];
-  /**
-   * Issue #222 — whether this category is actually wired into the runtime.
-   * `false` means the toggle is persisted but has no effect; the UI disables
-   * the select and shows a "Not enforced yet" note so users aren't misled.
-   */
-  enforced: boolean;
 }
 
 const CONTENT_CATEGORY_ROWS: ContentCategoryRow[] = [
@@ -1671,7 +1671,6 @@ const CONTENT_CATEGORY_ROWS: ContentCategoryRow[] = [
     description: 'Allow sites to play audio. Autoplay is subject to browser policy.',
     defaultState: 'allow',
     allowedStates: ['allow', 'block'],
-    enforced: true,
   },
   {
     category: 'images',
@@ -1679,7 +1678,6 @@ const CONTENT_CATEGORY_ROWS: ContentCategoryRow[] = [
     description: 'Allow sites to show images.',
     defaultState: 'allow',
     allowedStates: ['allow', 'block'],
-    enforced: true,
   },
   {
     category: 'javascript',
@@ -1687,7 +1685,6 @@ const CONTENT_CATEGORY_ROWS: ContentCategoryRow[] = [
     description: 'Allow sites to run JavaScript. Takes effect for newly opened tabs.',
     defaultState: 'allow',
     allowedStates: ['allow', 'block'],
-    enforced: true,
   },
   {
     category: 'popups',
@@ -1695,47 +1692,6 @@ const CONTENT_CATEGORY_ROWS: ContentCategoryRow[] = [
     description: 'Block sites from opening new windows or redirecting you.',
     defaultState: 'block',
     allowedStates: ['allow', 'block'],
-    enforced: true,
-  },
-  {
-    category: 'ads',
-    label: 'Intrusive ads',
-    description: 'Block ads on sites that show intrusive or misleading ads (Better Ads Standards).',
-    defaultState: 'block',
-    allowedStates: ['allow', 'block'],
-    enforced: false,
-  },
-  {
-    category: 'automatic-downloads',
-    label: 'Automatic downloads',
-    description: 'Ask before allowing sites to download multiple files automatically.',
-    defaultState: 'ask',
-    allowedStates: ['allow', 'ask', 'block'],
-    enforced: false,
-  },
-  {
-    category: 'protected-content',
-    label: 'Protected content IDs',
-    description: 'Allow sites to check your device for a protected content license.',
-    defaultState: 'allow',
-    allowedStates: ['allow', 'block'],
-    enforced: false,
-  },
-  {
-    category: 'clipboard-read',
-    label: 'Clipboard read',
-    description: 'Ask before allowing sites to read data you copied.',
-    defaultState: 'ask',
-    allowedStates: ['allow', 'ask', 'block'],
-    enforced: false,
-  },
-  {
-    category: 'clipboard-write',
-    label: 'Clipboard write',
-    description: 'Allow sites to write data to your clipboard when you interact with the page.',
-    defaultState: 'allow',
-    allowedStates: ['allow', 'block'],
-    enforced: false,
   },
 ];
 
@@ -1794,38 +1750,14 @@ function ContentCategoriesTab(): React.ReactElement {
       <Card variant="default" padding="none" className="settings-card">
         {CONTENT_CATEGORY_ROWS.map((row, idx) => {
           const currentState = defaults[row.category] ?? row.defaultState;
-          // Issue #222 — unenforced rows stay visible (so the list matches
-          // what Chrome shows) but the toggle is disabled and labelled.
-          const disabled = !row.enforced;
           return (
             <div
               key={row.category}
               className={`settings-scope-row ${idx < CONTENT_CATEGORY_ROWS.length - 1 ? 'settings-scope-row--bordered' : ''}`}
               data-testid={`content-category-row-${row.category}`}
-              data-enforced={row.enforced ? 'true' : 'false'}
             >
               <div className="settings-scope-info">
-                <span className="settings-scope-label">
-                  {row.label}
-                  {disabled && (
-                    <span
-                      style={{
-                        marginLeft: 8,
-                        padding: '2px 6px',
-                        fontSize: 10,
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.3,
-                        borderRadius: 4,
-                        background: 'var(--color-surface-muted, #eee)',
-                        color: 'var(--color-text-muted, #666)',
-                      }}
-                      title="This setting is persisted but is not yet enforced by the browser."
-                    >
-                      Not enforced yet
-                    </span>
-                  )}
-                </span>
+                <span className="settings-scope-label">{row.label}</span>
                 <span className="settings-scope-name" style={{ fontFamily: 'var(--font-ui)', fontSize: 12 }}>
                   {row.description}
                 </span>
@@ -1834,11 +1766,8 @@ function ContentCategoriesTab(): React.ReactElement {
                 <select
                   className="settings-select"
                   value={currentState}
-                  disabled={disabled}
                   onChange={(e) => void handleChange(row.category, e.target.value as CategoryState)}
-                  style={{ minWidth: 80, opacity: disabled ? 0.5 : 1 }}
-                  aria-disabled={disabled}
-                  title={disabled ? 'Not enforced yet (Issue #222 follow-up)' : undefined}
+                  style={{ minWidth: 80 }}
                 >
                   {row.allowedStates.map((s) => (
                     <option key={s} value={s}>{STATE_LABELS[s]}</option>

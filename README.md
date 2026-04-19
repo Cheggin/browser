@@ -106,6 +106,7 @@ An Electron-based browser built on Chromium with Chrome-parity features, an AI a
 
 ### Identity and Profiles
 - Profile picker on launch with settings toggle
+- Switch Profile (Cmd+Shift+M on macOS, Ctrl+Shift+M on Windows/Linux) — reopen the profile picker from the current window
 - Sign-out with clear vs. keep local data
 
 ### Developer Tools
@@ -117,7 +118,7 @@ An Electron-based browser built on Chromium with Chrome-parity features, an AI a
 
 ### Media and Accessibility
 - Picture-in-Picture (Cmd+Shift+P) via Chromium native API
-- Global Media Controls (Cmd+Shift+M) — play/pause/seek from toolbar
+- Global Media Controls — play/pause/seek from toolbar
 - Screen reader / ARIA passthrough — keyboard navigation and region cycling (F7)
 - QR code dialog for sharing the current URL
 
@@ -204,7 +205,7 @@ An Electron-based browser built on Chromium with Chrome-parity features, an AI a
 | View source | Cmd+Alt+U | Ctrl+U |
 | Settings | Cmd+, | Ctrl+, |
 | Toggle agent pill | Cmd+K | Ctrl+K |
-| Global Media Controls | Cmd+Shift+M | Ctrl+Shift+M |
+| Switch Profile | Cmd+Shift+M | Ctrl+Shift+M |
 | Caret browsing | F7 | F7 |
 | Emoji and symbols | Cmd+Ctrl+Space | — |
 

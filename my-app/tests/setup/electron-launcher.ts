@@ -43,7 +43,7 @@ import { MY_APP_DIR } from './playwright.config';
 const LOG_PREFIX = '[ElectronLauncher]';
 const LAUNCH_TIMEOUT_MS = 30_000;
 
-/** Entry point — built by `npm run build` (Electron Forge's vite build). */
+/** Entry point — built by `npm run package` (Electron Forge runs the Vite build during packaging). */
 const MAIN_JS_ENTRY = path.join(MY_APP_DIR, '.vite', 'build', 'main.js');
 
 // ---------------------------------------------------------------------------
@@ -90,8 +90,8 @@ export interface AppHandle {
  * Launch the Electron application for E2E testing.
  * Returns an AppHandle with the running ElectronApplication and first window.
  *
- * NOTE: Tests run against the vite-built main.js. Run `npm run build`
- * (or `npm run package`) in my-app/ before executing e2e tests.
+ * NOTE: Tests run against the vite-built main.js. Run `npm run package`
+ * in my-app/ before executing e2e tests.
  */
 export async function launchApp(opts: LaunchOptions = {}): Promise<AppHandle> {
   const mainEntry = opts.mainEntry ?? MAIN_JS_ENTRY;
@@ -99,7 +99,7 @@ export async function launchApp(opts: LaunchOptions = {}): Promise<AppHandle> {
   if (!fs.existsSync(mainEntry)) {
     throw new Error(
       `${LOG_PREFIX} Built main.js not found at ${mainEntry}. ` +
-        `Run \`npm run build\` in my-app/ before running E2E tests.`,
+        `Run \`npm run package\` in my-app/ before running E2E tests.`,
     );
   }
 

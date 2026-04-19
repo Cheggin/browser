@@ -312,9 +312,9 @@ async function screenshot(page: Page, stateName: string, notes?: string): Promis
 // Option B from the unskip plan — runs fast (<500ms, cached modules).
 
 test.beforeAll(async () => {
-  const configFile = path.join(MY_APP_ROOT, 'vite.settings.config.ts');
+  const configFile = path.join(MY_APP_ROOT, 'vite.settings.config.mts');
   if (!fs.existsSync(configFile)) {
-    logWarn('vite.settings.config.ts not found — skipping pre-build');
+    logWarn('vite.settings.config.mts not found — skipping pre-build');
     return;
   }
   const outDir = path.join(MY_APP_ROOT, '.vite', 'renderer', 'settings');

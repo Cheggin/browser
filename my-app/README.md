@@ -91,7 +91,7 @@ tests/
 
 - **`forge.config.ts`** — Electron Forge config (Vite plugin, makers, CSP)
 - **`vite.config.ts`** — Vite dev server (shell, pill, onboarding windows)
-- **`vite.settings.config.ts`** — Separate Vite config for standalone Settings renderer
+- **`vite.settings.config.mts`** — Separate Vite config for standalone Settings renderer
 - **`src/main/index.ts`** — Window creation, IPC contract, daemon lifecycle
 - **`my-app/python/requirements.txt`** — Python daemon dependencies (anthropic, pytest, etc.)
 

@@ -106,7 +106,7 @@ Root cause: `SettingsWindow.loadFile()` path resolves to `.vite/renderer/setting
 | onboarding-account-scopes capture | iter 2 | Google OAuth opens external browser; needs mock injection. |
 | Figma sync | iter 4 | OAuth URL generated; requires user to visit + paste callback. Deferred. |
 | TS upgrade (4.5 → 5.x) | iter 12 | node_modules type errors; skipLibCheck workaround exists. Requires `npm install`. |
-| electron-updater not installed | iter 4 | Intentional: TODO listed in updater.ts. Install with `npm install electron-updater`. |
+| electron-updater wiring | iter 4 | Package is installed (`electron-updater` in dependencies); remaining work is updater behavior/release wiring, not package installation. |
 | react-hooks ESLint plugin missing | iter 12 | `react-hooks/exhaustive-deps` rule not found. Install `eslint-plugin-react-hooks`. |
 
 ---

@@ -2,7 +2,7 @@
  * updater.ts — electron-updater integration.
  *
  * Uses electron-updater with the GitHub Releases provider to check for
- * updates against https://github.com/browser-use/desktop-app/releases. The
+ * updates against https://github.com/Cheggin/browser/releases. The
  * release.yml workflow uploads DMGs + SHA256SUMS.txt to the tagged Release,
  * which is exactly the feed format electron-updater's `github` provider
  * expects.
@@ -33,8 +33,8 @@ const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 // static options object (vs. reading `publish` from package.json) keeps the
 // feed config colocated with the code that consumes it and avoids needing
 // an electron-builder-style config block in package.json.
-const GITHUB_OWNER = 'browser-use';
-const GITHUB_REPO = 'desktop-app';
+const GITHUB_OWNER = 'Cheggin';
+const GITHUB_REPO = 'browser';
 
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
