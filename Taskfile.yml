@@ -1,0 +1,167 @@
+version: "3"
+
+# Top-level dev entrypoints. Run `task` to see the list.
+# Most tasks proxy to npm scripts inside my-app/ so both `task <x>` and
+# `cd my-app && npm run <x>` do the same thing.
+
+vars:
+  APP_DIR: my-app
+
+tasks:
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  # ----- launch -------------------------------------------------------------
+
+  start:
+    desc: Start the browser against the real user profile (default)
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm start
+
+  start:fresh:
+    desc: Start against a throwaway userData dir (preserves real profile)
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run start:fresh
+
+  start:onboarding:
+    desc: Start with the onboarding window forced open (fresh userData, real profile untouched)
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run start:onboarding
+
+  reset:onboarding:
+    desc: Delete account.json so the next launch retriggers onboarding (keeps keychain + session)
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run start:reset-onboarding
+
+  start:settings:
+    desc: Start in SETTINGS_STANDALONE mode (shell + settings window for design review)
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run dev:settings
+
+  # ----- daemon (Python agent backend in Docker) ----------------------------
+
+  daemon:up:
+    desc: Start the Python agent daemon in Docker (background, hot-reload)
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose up -d --build
+      - echo "Daemon running. Logs → task daemon:logs"
+
+  daemon:down:
+    desc: Stop the daemon container
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose down
+
+  daemon:logs:
+    desc: Tail daemon container logs (Ctrl+C to stop)
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose logs -f daemon
+
+  daemon:restart:
+    desc: Restart the daemon container
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose restart daemon
+
+  daemon:shell:
+    desc: Open a shell inside the daemon container
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose exec daemon bash
+
+  up:
+    desc: Build agent image + start the browser (everything in one command)
+    cmds:
+      - task: agent:build
+      - task: start
+
+  logs:
+    desc: Tail the app log file (main process + renderer console)
+    cmds:
+      - tail -f "$$HOME/Library/Application Support/my-app/logs/main.log"
+
+  down:
+    desc: Stop Docker daemon container (legacy, not needed for default TS engine)
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose down 2>/dev/null || true
+
+  # ----- agent docker image ---------------------------------------------------
+
+  agent:build:
+    desc: Bundle hl/ agent code + build Docker image (agent-task:latest)
+    dir: "{{.APP_DIR}}/docker/agent"
+    cmds:
+      - bash build.sh
+
+  agent:ps:
+    desc: List running agent task containers
+    cmds:
+      - docker ps --filter "name=agent-"
+
+
+  agent:logs:
+    desc: Tail logs for a running agent container
+    cmds:
+      - docker logs -f
+  # ----- quality gates ------------------------------------------------------
+
+  lint:
+    desc: Run eslint across the app
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run lint
+
+  typecheck:
+    desc: tsc --noEmit
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run typecheck
+
+  test:
+    desc: Vitest unit/integration suite
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm test
+
+  e2e:
+    desc: Playwright-Electron e2e suite
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run e2e
+
+  visual:
+    desc: Visual QA — capture screenshots + diff against references
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run visual:qa
+
+  qa:
+    desc: Full QA — lint + typecheck + test
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run qa
+
+  # ----- packaging ----------------------------------------------------------
+
+  package:
+    desc: Build an unpackaged app (electron-forge package)
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run package
+
+  make:
+    desc: Build platform installers (electron-forge make)
+    dir: "{{.APP_DIR}}"
+    cmds:
+      - npm run make
