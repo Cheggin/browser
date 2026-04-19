@@ -23,6 +23,7 @@ import { TabManager } from './tabs/TabManager';
 // Track B — Pill + hotkeys
 import { createPillWindow, togglePill, hidePill, forwardAgentEvent, getPillWindow, setPillHeight, PILL_HEIGHT_COLLAPSED, PILL_HEIGHT_EXPANDED } from './pill';
 import { registerHotkeys, unregisterHotkeys } from './hotkeys';
+import { initPresence, destroyPresence } from './presence';
 import { makeRequest, PROTOCOL_VERSION } from '../shared/types';
 import type { AgentEvent } from '../shared/types';
 // Track C — Onboarding gate
@@ -787,6 +788,7 @@ function resetProfileScopedStores(newProfileId: string): void {
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
   mainLogger.info('main.appReady');
+  initPresence();
 
   // Issue #21 — Search Engines: init store + register IPC before the shell loads.
   searchEngineStore = new SearchEngineStore();
@@ -1154,6 +1156,7 @@ app.whenReady().then(async () => {
   // Track B — unregister hotkeys on quit (macOS cleanup)
   // Track 5 — unregister settings handlers on quit
   app.on('will-quit', () => {
+    destroyPresence();
     unregisterHotkeys();
     unregisterSettingsHandlers();
     ipcMain.removeHandler('settings:get-zoom-overrides');
