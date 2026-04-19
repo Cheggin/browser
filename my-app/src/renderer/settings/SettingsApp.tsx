@@ -1076,7 +1076,7 @@ function zoomLevelToPercent(level: number): number {
   return Math.round(Math.pow(1.2, level) * 100);
 }
 
-function SiteZoomTab(): React.ReactElement {
+export function SiteZoomTab(): React.ReactElement {
   const toast = useToast();
   const [overrides, setOverrides] = useState<Array<{ origin: string; zoomLevel: number }>>([]);
   const [loading, setLoading] = useState(true);

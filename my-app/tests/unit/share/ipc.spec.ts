@@ -164,6 +164,57 @@ describe('share IPC — lazy ref resolution (issue #205)', () => {
     expect(clipboard.writeText).toHaveBeenCalledWith('https://copy.example/');
   });
 
+  it('share:email-page opens a mailto link with the active page title and URL', async () => {
+    const { shell } = await import('electron');
+    const tabManager = makeFakeTabManager('https://mail.example/path', 'Mail Me');
+    const shellWindow = makeFakeShellWindow();
+
+    registerShareHandlers({
+      getTabManager: () => tabManager,
+      getShellWindow: () => shellWindow,
+    });
+
+    const handler = handlers.get('share:email-page')!;
+    const ok = await handler();
+
+    expect(ok).toBe(true);
+    expect(shell.openExternal).toHaveBeenCalledWith(
+      'mailto:?subject=Mail%20Me&body=https%3A%2F%2Fmail.example%2Fpath',
+    );
+  });
+
+  it('share:save-page-as saves the active page after the user picks a path', async () => {
+    const { dialog } = await import('electron');
+    const tabManager = makeFakeTabManager('https://save.example/', 'Save / This: Page?');
+    const shellWindow = makeFakeShellWindow();
+
+    vi.mocked(dialog.showSaveDialog).mockResolvedValueOnce({
+      canceled: false,
+      filePath: '/tmp/save-example.html',
+    });
+
+    registerShareHandlers({
+      getTabManager: () => tabManager,
+      getShellWindow: () => shellWindow,
+    });
+
+    const handler = handlers.get('share:save-page-as')!;
+    const ok = await handler();
+
+    expect(ok).toBe(true);
+    expect(dialog.showSaveDialog).toHaveBeenCalledWith(shellWindow, {
+      defaultPath: 'Save - This- Page-',
+      filters: [
+        { name: 'Webpage, Complete', extensions: ['html'] },
+        { name: 'Webpage, HTML Only', extensions: ['html'] },
+      ],
+    });
+    expect(tabManager.getActiveWebContents()?.savePage).toHaveBeenCalledWith(
+      '/tmp/save-example.html',
+      'HTMLComplete',
+    );
+  });
+
   it('share:copy-link returns false when no tab manager is available', async () => {
     registerShareHandlers({
       getTabManager: () => null,

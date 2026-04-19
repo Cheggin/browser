@@ -42,7 +42,7 @@ export default defineConfig({
       // Issue #202 — auto-updater wiring
       'tests/unit/updater/**/*.spec.ts',
       // Factory-reset controller wiping (Issues #217 / #225)
-      'tests/unit/settings/**/*.spec.ts',
+      'tests/unit/settings/**/*.spec.{ts,tsx}',
       // Issue #222 — content-category policies actually enforced at runtime
       'tests/unit/content-categories/**/*.spec.ts',
       // Profile-scoped stores (Issue #208 — bookmarks/history/passwords/autofill
