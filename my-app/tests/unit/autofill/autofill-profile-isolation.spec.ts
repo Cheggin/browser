@@ -123,4 +123,68 @@ describe('AutofillStore — profile isolation', () => {
     const store = new AutofillStore();
     expect(store.getFilePath()).toMatch(/autofill\.json$/);
   });
+
+  it('supports address CRUD within a profile-scoped store', () => {
+    const profileDir = path.join(rootDir, 'profiles', 'profile-a');
+    fs.mkdirSync(profileDir, { recursive: true });
+
+    const store = new AutofillStore(profileDir);
+    const saved = store.saveAddress(sampleAddress('Alice CRUD'));
+
+    expect(store.listAddresses()).toHaveLength(1);
+    expect(store.getAddress(saved.id)?.fullName).toBe('Alice CRUD');
+
+    expect(
+      store.updateAddress(saved.id, {
+        city: 'Oakland',
+        postalCode: '94607',
+      }),
+    ).toBe(true);
+    expect(store.getAddress(saved.id)).toMatchObject({
+      city: 'Oakland',
+      postalCode: '94607',
+    });
+
+    expect(store.deleteAddress(saved.id)).toBe(true);
+    expect(store.listAddresses()).toEqual([]);
+  });
+
+  it('supports payment-card CRUD within a profile-scoped store', () => {
+    const profileDir = path.join(rootDir, 'profiles', 'profile-a');
+    fs.mkdirSync(profileDir, { recursive: true });
+
+    const store = new AutofillStore(profileDir);
+    const saved = store.saveCard({
+      nameOnCard: 'Alice Example',
+      cardNumber: '4111111111111111',
+      expiryMonth: '12',
+      expiryYear: '2030',
+      nickname: 'Personal Visa',
+    });
+
+    expect(store.listCards()).toHaveLength(1);
+    expect(saved).toMatchObject({
+      nameOnCard: 'Alice Example',
+      lastFour: '1111',
+      network: 'Visa',
+      nickname: 'Personal Visa',
+    });
+    expect(store.revealCardNumber(saved.id)).toBe('4111111111111111');
+
+    expect(
+      store.updateCard(saved.id, {
+        nickname: 'Updated Card',
+        cardNumber: '5555555555554444',
+      }),
+    ).toBe(true);
+    expect(store.listCards()[0]).toMatchObject({
+      nickname: 'Updated Card',
+      lastFour: '4444',
+      network: 'Mastercard',
+    });
+    expect(store.revealCardNumber(saved.id)).toBe('5555555555554444');
+
+    expect(store.deleteCard(saved.id)).toBe(true);
+    expect(store.listCards()).toEqual([]);
+  });
 });
