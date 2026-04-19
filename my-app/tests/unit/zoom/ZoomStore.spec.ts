@@ -282,4 +282,19 @@ describe('ZoomStore — persistence (flushSync)', () => {
     expect(reader.getZoomForOrigin('https://a.com')).toBe(1);
     expect(reader.getZoomForOrigin('https://b.com')).toBe(-0.5);
   });
+
+  it('persists to a provided profile-scoped data directory when one is supplied', () => {
+    const profileDir = '/tmp/profile-a';
+    const profileZoomPath = path.join(profileDir, 'zoom.json');
+
+    const store = new ZoomStore(profileDir);
+    store.setZoomForOrigin('https://profile.example', 1.25);
+    store.flushSync();
+
+    expect(fsStore.get(profileZoomPath)).toBeDefined();
+    expect(fsStore.get(ZOOM_PATH)).toBeUndefined();
+
+    const reader = new ZoomStore(profileDir);
+    expect(reader.getZoomForOrigin('https://profile.example')).toBe(1.25);
+  });
 });

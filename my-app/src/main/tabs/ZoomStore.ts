@@ -50,13 +50,18 @@ export function zoomLevelToPercent(level: number): number {
 }
 
 export class ZoomStore {
+  private readonly filePath: string;
   private state: PersistedZoom;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private dirty = false;
 
-  constructor() {
+  constructor(dataDir?: string) {
+    this.filePath = path.join(dataDir ?? app.getPath('userData'), ZOOM_FILE_NAME);
     this.state = this.load();
-    mainLogger.info('ZoomStore.init', { entryCount: Object.keys(this.state.origins).length });
+    mainLogger.info('ZoomStore.init', {
+      path: this.filePath,
+      entryCount: Object.keys(this.state.origins).length,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -65,7 +70,7 @@ export class ZoomStore {
 
   private load(): PersistedZoom {
     try {
-      const raw = fs.readFileSync(getZoomPath(), 'utf-8');
+      const raw = fs.readFileSync(this.filePath, 'utf-8');
       const parsed = JSON.parse(raw) as PersistedZoom;
       if (parsed.version !== 1 || typeof parsed.origins !== 'object') {
         mainLogger.warn('ZoomStore.load.invalid', { msg: 'Resetting zoom data' });
@@ -88,9 +93,10 @@ export class ZoomStore {
   flushSync(): void {
     if (!this.dirty) return;
     try {
-      fs.writeFileSync(getZoomPath(), JSON.stringify(this.state, null, 2), 'utf-8');
+      fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+      fs.writeFileSync(this.filePath, JSON.stringify(this.state, null, 2), 'utf-8');
       mainLogger.info('ZoomStore.flushSync.ok', {
-        path: getZoomPath(),
+        path: this.filePath,
         entryCount: Object.keys(this.state.origins).length,
       });
     } catch (err) {

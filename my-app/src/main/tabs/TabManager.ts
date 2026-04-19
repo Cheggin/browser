@@ -224,10 +224,7 @@ export class TabManager {
     this.isGuest = opts?.guest ?? false;
     this.partition = opts?.partition ?? null;
     this.sessionStore = new SessionStore(opts?.dataDir);
-    // ZoomStore currently persists to the default userData directory; the
-    // `opts.dataDir` plumbing is a no-op for it today. Tracked as a
-    // follow-up with the rest of the profile-scoped stores.
-    this.zoomStore = new ZoomStore();
+    this.zoomStore = new ZoomStore(opts?.dataDir);
     this.mutedSitesStore = new MutedSitesStore();
 
     // Create the shell overlay view — sits on top of all tab views

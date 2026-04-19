@@ -23,7 +23,10 @@
 
 import { chromium, ConsoleMessage } from '@playwright/test';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
+import { launchApp, teardownApp } from '../setup/electron-launcher';
+import type { AppHandle } from '../setup/electron-launcher';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -37,7 +40,14 @@ const REPORT_PATH = path.join(RESULTS_DIR, 'parity-report.json');
 
 const LOAD_WINDOW_MS = 30_000;
 const PAGE_TIMEOUT_MS = 45_000;
+const POLL_INTERVAL_MS = 250;
 const LOG_PREFIX = '[Parity]';
+const COMPLETED_ACCOUNT_JSON = JSON.stringify({
+  agent_name: 'Parity Runner',
+  email: 'parity@example.com',
+  created_at: '2026-01-01T00:00:00.000Z',
+  onboarding_completed_at: '2026-01-01T00:00:00.000Z',
+});
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,6 +101,211 @@ function isNewError(agError: ConsoleError, baselineErrors: ConsoleError[]): bool
 function isMissingError(chromeError: ConsoleError, agErrors: ConsoleError[]): boolean {
   const normCh = normaliseErrorText(chromeError.text);
   return !agErrors.some((ae) => normaliseErrorText(ae.text) === normCh);
+}
+
+function createSeededUserDataDir(): string {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'parity-agentic-'));
+  fs.writeFileSync(path.join(userDataDir, 'account.json'), COMPLETED_ACCOUNT_JSON, 'utf-8');
+  return userDataDir;
+}
+
+function cleanupSeededUserDataDir(userDataDir: string): void {
+  fs.rmSync(userDataDir, { recursive: true, force: true });
+}
+
+async function getActiveTabSnapshot(app: AppHandle): Promise<{
+  url: string | null;
+  isLoading: boolean;
+} | null> {
+  return app.electronApp.evaluate(() => {
+    const tm = (global as typeof globalThis & {
+      __tabManager__?: {
+        getState: () => {
+          tabs: Array<{ id: string; url: string; isLoading: boolean }>;
+          activeTabId: string | null;
+        };
+      };
+    }).__tabManager__;
+    if (!tm) return null;
+
+    const state = tm.getState();
+    const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+    if (!activeTab) return null;
+
+    return {
+      url: activeTab.url || null,
+      isLoading: activeTab.isLoading,
+    };
+  });
+}
+
+async function waitForAgenticNavigation(app: AppHandle): Promise<void> {
+  const deadline = Date.now() + PAGE_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const snapshot = await getActiveTabSnapshot(app);
+    if (
+      snapshot &&
+      snapshot.url &&
+      snapshot.url !== 'about:blank' &&
+      snapshot.url !== 'chrome://newtab/' &&
+      !snapshot.isLoading
+    ) {
+      return;
+    }
+    await app.firstWindow.waitForTimeout(POLL_INTERVAL_MS);
+  }
+
+  throw new Error(`Active tab did not finish loading within ${PAGE_TIMEOUT_MS}ms`);
+}
+
+async function startAgenticCapture(app: AppHandle, url: string): Promise<void> {
+  await app.electronApp.evaluate((_ctx, targetUrl: string) => {
+    type CaptureListener = (...args: unknown[]) => void;
+    type CaptureStore = {
+      errors: ConsoleError[];
+      cleanup: () => void;
+    };
+    const globalState = global as typeof globalThis & {
+      __tabManager__?: {
+        getActiveWebContents: () => {
+          id: number;
+          getURL: () => string;
+          on: (event: string, listener: CaptureListener) => void;
+          off: (event: string, listener: CaptureListener) => void;
+          executeJavaScript: (code: string, userGesture?: boolean) => Promise<unknown>;
+        } | null;
+        navigateActive: (input: string) => void;
+      };
+      __parityCapture__?: CaptureStore;
+    };
+
+    globalState.__parityCapture__?.cleanup();
+
+    const tabManager = globalState.__tabManager__;
+    if (!tabManager) {
+      throw new Error('global.__tabManager__ is unavailable; launch parity capture with NODE_ENV=test');
+    }
+
+    const webContents = tabManager.getActiveWebContents();
+    if (!webContents) {
+      throw new Error('No active webContents available for parity capture');
+    }
+
+    const errors: ConsoleError[] = [];
+    const pushError = (text: string, sourceUrl?: string, lineNumber?: number): void => {
+      errors.push({
+        text,
+        url: sourceUrl || undefined,
+        lineNumber: typeof lineNumber === 'number' ? lineNumber : undefined,
+      });
+    };
+
+    const onConsoleMessage: CaptureListener = (
+      _event,
+      level,
+      message,
+      line,
+      sourceId,
+    ) => {
+      if (typeof level === 'number' && level >= 3 && typeof message === 'string') {
+        pushError(message, typeof sourceId === 'string' ? sourceId : webContents.getURL(), typeof line === 'number' ? line : undefined);
+      }
+    };
+
+    const onDidFailLoad: CaptureListener = (
+      _event,
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+    ) => {
+      if (typeof isMainFrame === 'boolean' && !isMainFrame) return;
+      if (typeof errorDescription !== 'string') return;
+      const code = typeof errorCode === 'number' ? errorCode : 0;
+      const target = typeof validatedURL === 'string' ? validatedURL : webContents.getURL();
+      pushError(`[did-fail-load] ${errorDescription} (${code})`, target);
+    };
+
+    const onRenderProcessGone: CaptureListener = (_event, details) => {
+      const reason =
+        details && typeof details === 'object' && 'reason' in details
+          ? String((details as { reason?: unknown }).reason ?? 'unknown')
+          : 'unknown';
+      pushError(`[render-process-gone] ${reason}`, webContents.getURL());
+    };
+
+    const onDidFinishLoad: CaptureListener = () => {
+      void webContents.executeJavaScript(
+        `(() => {
+          if ((window).__parityPageErrorHookInstalled) return true;
+          Object.defineProperty(window, '__parityPageErrorHookInstalled', {
+            value: true,
+            configurable: false,
+            enumerable: false,
+            writable: false,
+          });
+          window.addEventListener('error', (event) => {
+            const error = event && typeof event === 'object' ? event.error : undefined;
+            const message =
+              error && typeof error === 'object' && 'message' in error
+                ? String(error.message)
+                : String(event?.message ?? 'unknown error');
+            console.error('[pageerror] ' + message);
+          });
+          window.addEventListener('unhandledrejection', (event) => {
+            const reason = event?.reason;
+            const message =
+              reason instanceof Error
+                ? reason.message
+                : typeof reason === 'string'
+                  ? reason
+                  : String(reason);
+            console.error('[unhandledrejection] ' + message);
+          });
+          return true;
+        })();`,
+        true,
+      ).catch(() => {
+        // Some pages forbid script injection or navigate away before the eval resolves.
+      });
+    };
+
+    webContents.on('console-message', onConsoleMessage);
+    webContents.on('did-fail-load', onDidFailLoad);
+    webContents.on('render-process-gone', onRenderProcessGone);
+    webContents.on('did-finish-load', onDidFinishLoad);
+
+    globalState.__parityCapture__ = {
+      errors,
+      cleanup: () => {
+        webContents.off('console-message', onConsoleMessage);
+        webContents.off('did-fail-load', onDidFailLoad);
+        webContents.off('render-process-gone', onRenderProcessGone);
+        webContents.off('did-finish-load', onDidFinishLoad);
+        delete globalState.__parityCapture__;
+      },
+    };
+
+    tabManager.navigateActive(targetUrl);
+  }, url);
+}
+
+async function finishAgenticCapture(app: AppHandle): Promise<ConsoleError[]> {
+  return app.electronApp.evaluate(() => {
+    const globalState = global as typeof globalThis & {
+      __parityCapture__?: {
+        errors: ConsoleError[];
+        cleanup: () => void;
+      };
+    };
+    const capture = globalState.__parityCapture__;
+    if (!capture) return [];
+
+    const errors = [...capture.errors];
+    capture.cleanup();
+    return errors;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -150,13 +365,38 @@ async function captureAgenticErrors(
     return [];
   }
 
-  // In real mode, this would launch the Electron app via electron-launcher and
-  // capture console errors from the WebContentsView. Stubbed until integration.
-  console.warn(
-    `${LOG_PREFIX} Real agentic capture not yet implemented. ` +
-    `Run with --dry-run until Electron integration is ready.`,
-  );
-  return [];
+  const userDataDir = createSeededUserDataDir();
+  let app: AppHandle | null = null;
+
+  try {
+    app = await launchApp({
+      userDataDir,
+      env: {
+        NODE_ENV: 'test',
+        ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+      },
+    });
+
+    const captureStartedAt = Date.now();
+    await startAgenticCapture(app, url);
+
+    try {
+      await waitForAgenticNavigation(app);
+    } catch (err) {
+      console.warn(`${LOG_PREFIX} Agentic navigation warning for ${url}: ${(err as Error).message}`);
+    }
+
+    const elapsedMs = Date.now() - captureStartedAt;
+    const remainingObserveMs = Math.max(5_000, LOAD_WINDOW_MS - elapsedMs);
+    await app.firstWindow.waitForTimeout(remainingObserveMs);
+
+    return await finishAgenticCapture(app);
+  } finally {
+    if (app) {
+      await teardownApp(app);
+    }
+    cleanupSeededUserDataDir(userDataDir);
+  }
 }
 
 // ---------------------------------------------------------------------------
