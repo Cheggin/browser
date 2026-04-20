@@ -74,7 +74,7 @@ function makeExt(over: Partial<FakeExtension> = {}): FakeExtension {
     enabled: true,
     permissions: [],
     hostPermissions: [],
-    hostAccess: 'on-click',
+    hostAccess: 'all-sites',
     icons: {},
     ...over,
   };
@@ -184,9 +184,7 @@ describe('ExtensionsApp', () => {
     await waitFor(() => expect(api.setHostAccess).toHaveBeenCalledWith('a', 'all-sites'));
   });
 
-  // Issue #234: the selector used to let users pick modes the app never
-  // enforced. Those options are now rendered but disabled with honest copy.
-  it('disables unsupported host-access modes and shows a "coming soon" hint', async () => {
+  it('does not surface unsupported host-access modes in the picker', async () => {
     const api = makeAPI([makeExt({ id: 'a', name: 'Alpha', hostAccess: 'all-sites' })]);
     (window as unknown as { extensionsAPI: typeof api }).extensionsAPI = api;
     render(<ExtensionsApp />);
@@ -194,19 +192,10 @@ describe('ExtensionsApp', () => {
     const btn = await screen.findByRole('button', { name: /on all sites/i });
     fireEvent.click(btn);
 
-    const specificSitesOpt = await screen.findByRole('option', { name: /on specific sites/i });
-    const onClickOpt = await screen.findByRole('option', { name: /on click/i });
     const allSitesOpt = await screen.findByRole('option', { name: /on all sites/i });
 
-    expect((specificSitesOpt as HTMLButtonElement).disabled).toBe(true);
-    expect((onClickOpt as HTMLButtonElement).disabled).toBe(true);
     expect((allSitesOpt as HTMLButtonElement).disabled).toBe(false);
-
-    // Clicking a disabled option must not call the IPC — we refuse to
-    // persist a mode we can't actually enforce.
-    await act(async () => {
-      fireEvent.click(specificSitesOpt);
-    });
-    expect(api.setHostAccess).not.toHaveBeenCalled();
+    expect(screen.queryByRole('option', { name: /on specific sites/i })).toBeNull();
+    expect(screen.queryByRole('option', { name: /on click/i })).toBeNull();
   });
 });
