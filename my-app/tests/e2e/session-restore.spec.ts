@@ -201,18 +201,6 @@ async function flushSession(electronApp: ElectronApplication): Promise<void> {
 test.describe('Session Restore', () => {
   test.describe.configure({ mode: 'serial' });
 
-  // Known gap: TabManager.createTab(file://) currently fails to load the
-  // fixture under packaged/dev test mode — the WebContentsView lands on the
-  // "Page not available" fallback page, so session.json never contains the
-  // requested URL. This is a TabManager file:// handling bug, NOT an E2E
-  // launcher problem. Tracked separately. Skipping until TabManager fixture
-  // loading is repaired so the suite stays green.
-  test.skip(
-    true,
-    'Session restore tests require TabManager to load file:// fixtures — ' +
-      'currently redirects to chrome-error page. Fix TabManager file:// handling, then unskip.',
-  );
-
   // -------------------------------------------------------------------------
   // Test 1: 3 tabs → quit → relaunch → same URLs + count preserved
   // -------------------------------------------------------------------------

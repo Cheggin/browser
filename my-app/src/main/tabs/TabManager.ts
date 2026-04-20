@@ -69,6 +69,7 @@ import {
 } from '../errors/NetworkErrorController';
 import type { TabGroupStore } from './TabGroupStore';
 import { getAnnouncedCdpPort } from '../startup/cli';
+import { getLocalRendererHtmlPath } from '../localRendererHtml';
 
 // Forge VitePlugin globals for the new-tab page (injected at build time)
 declare const NEWTAB_VITE_DEV_SERVER_URL: string | undefined;
@@ -79,6 +80,12 @@ declare const SHELL_VITE_DEV_SERVER_URL: string | undefined;
 function resolveNewTabUrl(): string {
   if (typeof NEWTAB_VITE_DEV_SERVER_URL !== 'undefined' && NEWTAB_VITE_DEV_SERVER_URL) {
     return NEWTAB_VITE_DEV_SERVER_URL + '/src/renderer/newtab/newtab.html';
+  }
+  if (!app.isPackaged) {
+    const localPath = getLocalRendererHtmlPath('newtab', 'newtab.html');
+    if (localPath) {
+      return 'file://' + localPath;
+    }
   }
   const name = typeof NEWTAB_VITE_NAME !== 'undefined' ? NEWTAB_VITE_NAME : 'newtab';
   return 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'newtab.html');
@@ -92,7 +99,7 @@ const NEWTAB_PRELOAD = path.join(__dirname, 'newtab.js');
 const CHROME_HEIGHT = 91;
 const STATUS_BAR_HEIGHT = 24;
 const STATUS_BAR_MAX_WIDTH = 500;
-const BLOCKED_SCHEMES = /^(javascript|file|data|vbscript):/i;
+const BLOCKED_SCHEMES = /^(javascript|data|vbscript):/i;
 const MAX_HISTORY_MENU_ITEMS = 15;
 
 export interface TabState {
@@ -1094,30 +1101,50 @@ export class TabManager {
       if (typeof HISTORY_VITE_DEV_SERVER_URL !== 'undefined' && HISTORY_VITE_DEV_SERVER_URL) {
         url = HISTORY_VITE_DEV_SERVER_URL + '/src/renderer/history/history.html';
       } else {
-        const name = typeof HISTORY_VITE_NAME !== 'undefined' ? HISTORY_VITE_NAME : 'history';
-        url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'history.html');
+        const localPath = !app.isPackaged ? getLocalRendererHtmlPath('history', 'history.html') : null;
+        if (localPath) {
+          url = 'file://' + localPath;
+        } else {
+          const name = typeof HISTORY_VITE_NAME !== 'undefined' ? HISTORY_VITE_NAME : 'history';
+          url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'history.html');
+        }
       }
     } else if (page === 'downloads') {
       if (typeof DOWNLOADS_VITE_DEV_SERVER_URL !== 'undefined' && DOWNLOADS_VITE_DEV_SERVER_URL) {
         url = DOWNLOADS_VITE_DEV_SERVER_URL + '/src/renderer/downloads/downloads.html';
       } else {
-        const name = typeof DOWNLOADS_VITE_NAME !== 'undefined' ? DOWNLOADS_VITE_NAME : 'downloads';
-        url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'downloads.html');
+        const localPath = !app.isPackaged ? getLocalRendererHtmlPath('downloads', 'downloads.html') : null;
+        if (localPath) {
+          url = 'file://' + localPath;
+        } else {
+          const name = typeof DOWNLOADS_VITE_NAME !== 'undefined' ? DOWNLOADS_VITE_NAME : 'downloads';
+          url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'downloads.html');
+        }
       }
     } else if (page === 'bookmarks') {
       if (typeof BOOKMARKS_VITE_DEV_SERVER_URL !== 'undefined' && BOOKMARKS_VITE_DEV_SERVER_URL) {
         url = BOOKMARKS_VITE_DEV_SERVER_URL + '/src/renderer/bookmarks/bookmarks.html';
       } else {
-        const name = typeof BOOKMARKS_VITE_NAME !== 'undefined' ? BOOKMARKS_VITE_NAME : 'bookmarks';
-        url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'bookmarks.html');
+        const localPath = !app.isPackaged ? getLocalRendererHtmlPath('bookmarks', 'bookmarks.html') : null;
+        if (localPath) {
+          url = 'file://' + localPath;
+        } else {
+          const name = typeof BOOKMARKS_VITE_NAME !== 'undefined' ? BOOKMARKS_VITE_NAME : 'bookmarks';
+          url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'bookmarks.html');
+        }
       }
     } else if (CHROME_PAGES_PAGES.has(page)) {
       let baseUrl: string;
       if (typeof CHROME_PAGES_VITE_DEV_SERVER_URL !== 'undefined' && CHROME_PAGES_VITE_DEV_SERVER_URL) {
         baseUrl = CHROME_PAGES_VITE_DEV_SERVER_URL + '/src/renderer/chrome/chrome.html';
       } else {
-        const name = typeof CHROME_PAGES_VITE_NAME !== 'undefined' ? CHROME_PAGES_VITE_NAME : 'chrome_pages';
-        baseUrl = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'chrome.html');
+        const localPath = !app.isPackaged ? getLocalRendererHtmlPath('chrome', 'chrome.html') : null;
+        if (localPath) {
+          baseUrl = 'file://' + localPath;
+        } else {
+          const name = typeof CHROME_PAGES_VITE_NAME !== 'undefined' ? CHROME_PAGES_VITE_NAME : 'chrome_pages';
+          baseUrl = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'chrome.html');
+        }
       }
       url = `${baseUrl}#${page}`;
     } else {

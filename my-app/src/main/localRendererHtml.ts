@@ -8,6 +8,19 @@ import path from 'node:path';
  * inlined so the renderer can boot without a dev server.
  */
 export function getLocalRendererHtmlPath(subdir: string, fileName: string): string | null {
+  const viteRendererHtmlPath = path.join(
+    __dirname,
+    '../../.vite/renderer',
+    subdir,
+    'src/renderer',
+    subdir,
+    fileName,
+  );
+
+  if (fs.existsSync(viteRendererHtmlPath)) {
+    return viteRendererHtmlPath;
+  }
+
   const distHtmlPath = path.join(
     __dirname,
     '../../dist/src/renderer',
