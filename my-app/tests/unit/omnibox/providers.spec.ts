@@ -5,11 +5,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clipboard } from 'electron';
 
 import {
+  bookmarkProvider,
   featuredSearchProvider,
   getCustomKeywordEngines,
+  historyQuickProvider,
+  historyUrlProvider,
   keywordProvider,
   searchProvider,
   setCustomKeywordEngines,
+  shortcutsProvider,
   zeroSuggestProvider,
 } from '../../../src/main/omnibox/providers';
 
@@ -25,18 +29,43 @@ const providerContext = {
   ],
   bookmarkEntries: [
     {
-      id: 'bookmark-1',
+      id: 'folder-1',
       parentId: 'root',
-      type: 'bookmark',
-      name: 'Bookmark Match',
-      url: 'https://bookmarks.example.com/match',
+      type: 'folder',
+      name: 'Folder',
+      url: undefined,
       dateAdded: Date.now(),
-      dateGroupModified: null,
+      dateGroupModified: Date.now(),
       index: 0,
-      children: [],
+      children: [
+        {
+          id: 'bookmark-1',
+          parentId: 'folder-1',
+          type: 'bookmark',
+          name: 'Bookmark Match',
+          url: 'https://bookmarks.example.com/match',
+          dateAdded: Date.now(),
+          dateGroupModified: null,
+          index: 0,
+          children: [],
+        },
+      ],
     },
   ],
-  shortcutEntries: [],
+  shortcutEntries: [
+    {
+      url: 'https://shortcut.example.com/path',
+      title: 'Shortcut entry',
+      lastUsed: Date.now(),
+      hitCount: 9,
+    },
+    {
+      url: 'https://shortcut.example.com/other',
+      title: 'Older shortcut',
+      lastUsed: Date.now() - 10_000,
+      hitCount: 1,
+    },
+  ],
   openTabs: [
     {
       title: 'Current open tab',
@@ -90,6 +119,75 @@ describe('omnibox keywordProvider', () => {
         name: 'My Search',
         template: 'https://search.example.com/?q=%s',
       },
+    });
+  });
+});
+
+describe('omnibox local providers', () => {
+  it('ranks learned shortcuts ahead by hit count', () => {
+    const suggestions = shortcutsProvider('sho', providerContext);
+
+    expect(suggestions).toHaveLength(2);
+    expect(suggestions[0]).toMatchObject({
+      id: 'shortcut-0-https://shortcut.example.com/path',
+      title: 'Shortcut entry',
+      relevance: 1309,
+    });
+    expect(suggestions[1]).toMatchObject({
+      title: 'Older shortcut',
+      relevance: 1301,
+    });
+  });
+
+  it('sorts history quick matches by freq+recency score', () => {
+    const now = Date.now();
+    const suggestions = historyQuickProvider('example', {
+      ...providerContext,
+      historyEntries: [
+        {
+          id: 'recent',
+          url: 'https://example.com/recent',
+          title: 'Recent Example',
+          visitTime: now,
+          favicon: null,
+        },
+        {
+          id: 'older',
+          url: 'https://example.com/older',
+          title: 'Older Example',
+          visitTime: now - 3 * 24 * 60 * 60 * 1000,
+          favicon: null,
+        },
+      ],
+    });
+
+    expect(suggestions.map((suggestion) => suggestion.id)).toEqual([
+      'history-quick-recent',
+      'history-quick-older',
+    ]);
+    expect(suggestions[0].relevance).toBeGreaterThan(suggestions[1].relevance);
+  });
+
+  it('returns inline-completion candidates when a history URL starts with the input', () => {
+    const suggestions = historyUrlProvider('https://history.example.com/re', providerContext);
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]).toMatchObject({
+      id: 'history-url-hist-1-0',
+      url: 'https://history.example.com/recent',
+      allowTabCompletion: true,
+    });
+  });
+
+  it('returns bookmark matches from nested bookmark folders', () => {
+    const suggestions = bookmarkProvider('bookmark match', providerContext);
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]).toMatchObject({
+      id: 'bookmark-bookmark-1',
+      title: 'Bookmark Match',
+      url: 'https://bookmarks.example.com/match',
+      allowTabCompletion: true,
     });
   });
 });
