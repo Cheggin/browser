@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('../../../src/renderer/shell/TabHoverCard', () => ({
   TabHoverCard: () => null,
@@ -97,5 +97,53 @@ describe('TabStrip overflow behavior', () => {
 
     expect(screen.getByRole('button', { name: /search tabs/i })).toBeTruthy();
     expect(container.querySelectorAll('.tab-item--icon-only').length).toBeGreaterThan(0);
+  });
+
+  it('detaches a dragged tab into a new window when dropped below the strip threshold', async () => {
+    const moveToNewWindow = vi.fn(async () => true);
+    globalThis.electronAPI = {
+      tabs: {
+        showContextMenu: vi.fn(async () => undefined),
+        muteTab: vi.fn(async () => undefined),
+        captureThumbnail: vi.fn(async () => null),
+        pin: vi.fn(async () => undefined),
+        unpin: vi.fn(async () => undefined),
+        moveToNewWindow,
+      },
+      tabGroups: {
+        list: vi.fn(async () => []),
+        onUpdated: vi.fn(() => () => undefined),
+        create: vi.fn(async () => undefined),
+        update: vi.fn(async () => undefined),
+        addTab: vi.fn(async () => undefined),
+        removeTab: vi.fn(async () => undefined),
+        delete: vi.fn(async () => undefined),
+      },
+    };
+
+    const { container } = render(
+      <TabStrip
+        tabs={[makeTab('1'), makeTab('2')]}
+        activeTabId="1"
+        onActivate={vi.fn()}
+        onClose={vi.fn()}
+        onNewTab={vi.fn()}
+        onMove={vi.fn()}
+        onMuteToggle={vi.fn()}
+      />,
+    );
+
+    const firstTab = container.querySelector('.tab-item') as HTMLElement;
+    const dataTransfer = { effectAllowed: '', dropEffect: '' };
+    const dragStart = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragStart, 'dataTransfer', { value: dataTransfer });
+    firstTab.dispatchEvent(dragStart);
+
+    const dragEnd = new Event('dragend', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragEnd, 'clientY', { value: 120 });
+    firstTab.dispatchEvent(dragEnd);
+
+    await Promise.resolve();
+    expect(moveToNewWindow).toHaveBeenCalledWith('1');
   });
 });

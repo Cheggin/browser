@@ -129,4 +129,51 @@ describe('TabManager pinned tabs and group creation', () => {
     );
     expect(manager.broadcastTabGroups).toHaveBeenCalledTimes(1);
   });
+
+  it('routes pin, duplicate, close-others, and close-right through the tab context menu', () => {
+    const view = makeView();
+    const manager = Object.create(TabManager.prototype) as any;
+    manager.tabs = new Map([
+      ['tab-1', view],
+      ['tab-2', makeView('https://example.com/two')],
+      ['tab-3', makeView('https://example.com/three')],
+    ]);
+    manager.tabOrder = ['tab-1', 'tab-2', 'tab-3'];
+    manager.pinnedTabs = new Set();
+    manager.win = {};
+    manager.reload = vi.fn();
+    manager.duplicateTab = vi.fn();
+    manager.pinTab = vi.fn();
+    manager.unpinTab = vi.fn();
+    manager.toggleMuteTab = vi.fn();
+    manager.closeTab = vi.fn();
+    manager.closeOtherTabs = vi.fn();
+    manager.closeTabsToRight = vi.fn();
+    manager.muteSite = vi.fn();
+    manager.unmuteSite = vi.fn();
+    manager.broadcastTabGroups = vi.fn();
+    manager.mutedSitesStore = { isMutedOrigin: vi.fn(() => false) };
+    manager.closedStack = [];
+    manager.reopenLastClosed = vi.fn();
+    manager.safeSend = vi.fn();
+    manager.tabGroupStore = null;
+
+    manager.showTabContextMenu('tab-1');
+
+    const click = (label: string) => {
+      const item = lastMenu?.items.find((entry) => entry.label === label);
+      expect(item).toBeTruthy();
+      item?.click?.();
+    };
+
+    click('Pin Tab');
+    click('Duplicate');
+    click('Close Other Tabs');
+    click('Close Tabs to the Right');
+
+    expect(manager.pinTab).toHaveBeenCalledWith('tab-1');
+    expect(manager.duplicateTab).toHaveBeenCalledWith('tab-1');
+    expect(manager.closeOtherTabs).toHaveBeenCalledWith('tab-1');
+    expect(manager.closeTabsToRight).toHaveBeenCalledWith('tab-1');
+  });
 });
