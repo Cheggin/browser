@@ -66,6 +66,8 @@ function makeManager(selection = 'selected text'): TabManager {
       {
         goBack: vi.fn(),
         goForward: vi.fn(),
+        reload: vi.fn(),
+        reloadIgnoringCache: vi.fn(),
       },
     ],
   ]);
@@ -133,7 +135,12 @@ describe('TabManager shortcut helpers', () => {
 
   it('navigates history through the active tab controller', () => {
     const manager = makeManager() as TabManager & {
-      navControllers: Map<string, { goBack: ReturnType<typeof vi.fn>; goForward: ReturnType<typeof vi.fn> }>;
+      navControllers: Map<string, {
+        goBack: ReturnType<typeof vi.fn>;
+        goForward: ReturnType<typeof vi.fn>;
+        reload: ReturnType<typeof vi.fn>;
+        reloadIgnoringCache: ReturnType<typeof vi.fn>;
+      }>;
     };
     const nav = manager.navControllers.get('tab-1')!;
 
@@ -142,6 +149,23 @@ describe('TabManager shortcut helpers', () => {
 
     expect(nav.goBack).toHaveBeenCalledTimes(1);
     expect(nav.goForward).toHaveBeenCalledTimes(1);
+  });
+
+  it('bypasses cache on a hard reload of the active tab', () => {
+    const manager = makeManager() as TabManager & {
+      navControllers: Map<string, {
+        goBack: ReturnType<typeof vi.fn>;
+        goForward: ReturnType<typeof vi.fn>;
+        reload: ReturnType<typeof vi.fn>;
+        reloadIgnoringCache: ReturnType<typeof vi.fn>;
+      }>;
+    };
+    const nav = manager.navControllers.get('tab-1')!;
+
+    manager.reloadActiveIgnoringCache();
+
+    expect(nav.reloadIgnoringCache).toHaveBeenCalledTimes(1);
+    expect(nav.reload).not.toHaveBeenCalled();
   });
 
   it('relayouts when the side-panel width changes', () => {
