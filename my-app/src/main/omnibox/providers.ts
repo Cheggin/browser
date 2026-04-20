@@ -362,6 +362,7 @@ export function featuredSearchProvider(
   ctx: ProviderContext,
 ): OmniboxSuggestion[] {
   const trimmed = input.trim().toLowerCase();
+  const rawLower = input.toLowerCase();
 
   // Show starter list when user types "@"
   if (trimmed === '@') {
@@ -369,7 +370,7 @@ export function featuredSearchProvider(
   }
 
   // Match @tabs <query> — search open tabs
-  if (trimmed.startsWith('@tabs ')) {
+  if (trimmed === '@tabs' || rawLower.startsWith('@tabs ')) {
     const query = trimmed.slice(6).trim();
     const lower = query.toLowerCase();
     if (!query) return [FEATURED_KEYWORDS['@tabs']];
@@ -391,7 +392,7 @@ export function featuredSearchProvider(
   }
 
   // Match @bookmarks <query>
-  if (trimmed.startsWith('@bookmarks ')) {
+  if (trimmed === '@bookmarks' || rawLower.startsWith('@bookmarks ')) {
     const query = trimmed.slice(11).trim();
     if (!query) return [FEATURED_KEYWORDS['@bookmarks']];
     return bookmarkProvider(query, ctx).map((s) => ({
@@ -402,7 +403,7 @@ export function featuredSearchProvider(
   }
 
   // Match @history <query>
-  if (trimmed.startsWith('@history ')) {
+  if (trimmed === '@history' || rawLower.startsWith('@history ')) {
     const query = trimmed.slice(9).trim();
     if (!query) return [FEATURED_KEYWORDS['@history']];
     return historyQuickProvider(query, ctx).map((s) => ({
