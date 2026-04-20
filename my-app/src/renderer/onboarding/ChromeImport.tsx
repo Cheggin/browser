@@ -11,6 +11,9 @@ interface ChromeProfile {
   email: string;
   avatarUrl: string;
   profilePath: string;
+  browserName: string;
+  browserPath: string;
+  displayName: string;
 }
 
 interface ChromeImportResult {
@@ -28,7 +31,7 @@ declare global {
   interface Window {
     chromeImportAPI: {
       listProfiles: () => Promise<ChromeProfile[]>;
-      runImport: (profilePath: string) => Promise<ChromeImportResult>;
+      runImport: (profile: ChromeProfile) => Promise<ChromeImportResult>;
       onProgress: (cb: (progress: ChromeImportProgress) => void) => () => void;
     };
   }
@@ -80,7 +83,7 @@ export function ChromeImport({ onNext, onSkip }: ChromeImportProps): React.React
     setProgress({ phase: 'cookies', current: 0, total: 0 });
 
     try {
-      const res = await window.chromeImportAPI.runImport(selectedProfile.profilePath);
+      const res = await window.chromeImportAPI.runImport(selectedProfile);
       setResult(res);
       setImportState('done');
     } catch (err) {
@@ -91,13 +94,13 @@ export function ChromeImport({ onNext, onSkip }: ChromeImportProps): React.React
 
   function renderProfileList(): React.ReactNode {
     if (loading) {
-      return <p className="onboarding-subhead">Detecting Chrome profiles...</p>;
+      return <p className="onboarding-subhead">Detecting browser profiles...</p>;
     }
 
     if (profiles.length === 0) {
       return (
         <div>
-          <p className="onboarding-subhead">No Chrome installation found.</p>
+          <p className="onboarding-subhead">No supported Chromium browser profile found.</p>
           <p className="onboarding-subhead" style={{ fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
             You can import later from Settings.
           </p>
@@ -158,6 +161,9 @@ export function ChromeImport({ onNext, onSkip }: ChromeImportProps): React.React
               <div style={{ color: 'var(--color-fg-default)', fontWeight: 500, fontSize: 14 }}>
                 {profile.name}
               </div>
+              <div style={{ color: 'var(--color-fg-muted)', fontSize: 12 }}>
+                {profile.browserName}
+              </div>
               {profile.email && (
                 <div style={{ color: 'var(--color-fg-muted)', fontSize: 12 }}>
                   {profile.email}
@@ -178,7 +184,7 @@ export function ChromeImport({ onNext, onSkip }: ChromeImportProps): React.React
 
     return (
       <div style={{ textAlign: 'center' }}>
-        <h1 className="onboarding-headline">Importing from Chrome</h1>
+        <h1 className="onboarding-headline">Importing from your browser</h1>
         <p className="onboarding-subhead" style={{ marginTop: 8 }}>
           {phaseName}... {pct}%
         </p>
@@ -307,9 +313,9 @@ export function ChromeImport({ onNext, onSkip }: ChromeImportProps): React.React
 
       <div className="onboarding-panel-left">
         <div>
-          <h1 className="onboarding-headline">Import from Chrome</h1>
+          <h1 className="onboarding-headline">Import from your browser</h1>
           <p className="onboarding-subhead" style={{ marginTop: 8, color: 'var(--color-fg-primary)' }}>
-            Bring your cookies, bookmarks, and sessions so you're already logged in everywhere.
+            Copy a Chromium profile into a temporary sandbox, extract cookies over CDP, and bring your bookmarks along.
           </p>
         </div>
 
@@ -321,7 +327,7 @@ export function ChromeImport({ onNext, onSkip }: ChromeImportProps): React.React
             onClick={() => void handleImport()}
             type="button"
             disabled={!selectedProfile || profiles.length === 0}
-            aria-label="Import selected Chrome profile"
+            aria-label="Import selected browser profile"
           >
             {profiles.length === 0 ? 'Skip' : 'Import'}
           </button>

@@ -2,13 +2,8 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { mainLogger } from '../logger';
 import { listChromeProfiles } from './ChromeProfileReader';
 import { importChromeCookes } from './ChromeCookieImporter';
-import { readChromeBookmarks } from './ChromeBookmarkImporter';
 import type { ChromeProfile } from './ChromeProfileReader';
-
-export interface ChromeImportResult {
-  cookies: { imported: number; failed: number; total: number };
-  bookmarks: { imported: number; folders: number };
-}
+import type { ChromeImportResult } from './ChromeCookieImporter';
 
 export function registerChromeImportHandlers(onboardingWindow: BrowserWindow): void {
   mainLogger.info('chromeImport.registerHandlers');
@@ -18,8 +13,11 @@ export function registerChromeImportHandlers(onboardingWindow: BrowserWindow): v
     return listChromeProfiles();
   });
 
-  ipcMain.handle('chrome-import:run', async (_event, profilePath: string): Promise<ChromeImportResult> => {
-    mainLogger.info('chromeImport.run', { profilePath });
+  ipcMain.handle('chrome-import:run', async (_event, profile: ChromeProfile): Promise<ChromeImportResult> => {
+    mainLogger.info('chromeImport.run', {
+      browserName: profile.browserName,
+      profilePath: profile.profilePath,
+    });
 
     const sendProgress = (phase: string, current: number, total: number) => {
       if (!onboardingWindow.isDestroyed()) {
@@ -27,41 +25,24 @@ export function registerChromeImportHandlers(onboardingWindow: BrowserWindow): v
       }
     };
 
-    // Import cookies
-    let cookieResult = { imported: 0, failed: 0, total: 0 };
     try {
-      cookieResult = await importChromeCookes(profilePath, (imported, total) => {
+      const result = await importChromeCookes(profile.browserPath, profile.profilePath, (imported, total) => {
         sendProgress('cookies', imported, total);
       });
+      sendProgress('bookmarks', result.bookmarks.imported, result.bookmarks.imported);
+      mainLogger.info('chromeImport.run.complete', {
+        browserName: profile.browserName,
+        cookiesImported: result.cookies.imported,
+        bookmarksImported: result.bookmarks.imported,
+      });
+      return result;
     } catch (err) {
-      mainLogger.error('chromeImport.run.cookiesFailed', {
+      mainLogger.error('chromeImport.run.failed', {
+        browserName: profile.browserName,
         error: (err as Error).message,
       });
+      throw err;
     }
-
-    // Import bookmarks
-    let bookmarkResult = { imported: 0, folders: 0 };
-    try {
-      const { bookmarks, folders } = readChromeBookmarks(profilePath);
-      bookmarkResult = { imported: bookmarks.length, folders };
-      sendProgress('bookmarks', bookmarks.length, bookmarks.length);
-    } catch (err) {
-      mainLogger.error('chromeImport.run.bookmarksFailed', {
-        error: (err as Error).message,
-      });
-    }
-
-    const result: ChromeImportResult = {
-      cookies: cookieResult,
-      bookmarks: bookmarkResult,
-    };
-
-    mainLogger.info('chromeImport.run.complete', {
-      cookiesImported: cookieResult.imported,
-      bookmarksImported: bookmarkResult.imported,
-    });
-
-    return result;
   });
 }
 

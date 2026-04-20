@@ -114,6 +114,9 @@ export interface ChromeProfile {
   email: string;
   avatarUrl: string;
   profilePath: string;
+  browserName: string;
+  browserPath: string;
+  displayName: string;
 }
 
 export interface ChromeImportProgress {
@@ -129,7 +132,7 @@ export interface ChromeImportResult {
 
 export interface ChromeImportAPI {
   listProfiles: () => Promise<ChromeProfile[]>;
-  runImport: (profilePath: string) => Promise<ChromeImportResult>;
+  runImport: (profile: ChromeProfile) => Promise<ChromeImportResult>;
   onProgress: (cb: (progress: ChromeImportProgress) => void) => () => void;
 }
 
@@ -139,9 +142,12 @@ const chromeImportAPI: ChromeImportAPI = {
     return ipcRenderer.invoke('chrome-import:list-profiles') as Promise<ChromeProfile[]>;
   },
 
-  runImport: async (profilePath: string): Promise<ChromeImportResult> => {
-    console.debug('[onboarding-preload] chrome-import:run', { profilePath });
-    return ipcRenderer.invoke('chrome-import:run', profilePath) as Promise<ChromeImportResult>;
+  runImport: async (profile: ChromeProfile): Promise<ChromeImportResult> => {
+    console.debug('[onboarding-preload] chrome-import:run', {
+      browserName: profile.browserName,
+      profilePath: profile.profilePath,
+    });
+    return ipcRenderer.invoke('chrome-import:run', profile) as Promise<ChromeImportResult>;
   },
 
   onProgress: (cb: (progress: ChromeImportProgress) => void): (() => void) => {

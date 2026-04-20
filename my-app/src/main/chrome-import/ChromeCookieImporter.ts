@@ -1,174 +1,230 @@
 import fs from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
+import net from 'node:net';
 import os from 'node:os';
+import path from 'node:path';
+import { spawn, type ChildProcess } from 'node:child_process';
+
 import { session } from 'electron';
+
+import { cdpForWsUrl } from '../hl/cdp';
 import { mainLogger } from '../logger';
+import { readChromeBookmarks } from './ChromeBookmarkImporter';
 
-const SALT = 'saltysalt';
-const ITERATIONS_MAC = 1003;
-const KEY_LENGTH = 16;
-const IV = Buffer.alloc(16, ' '.charCodeAt(0));
+export interface ChromeImportResult {
+  cookies: { imported: number; failed: number; total: number };
+  bookmarks: { imported: number; folders: number };
+}
 
-interface RawCookie {
-  host_key: string;
+interface ImportedCookie {
   name: string;
+  value: string;
+  domain: string;
   path: string;
-  encrypted_value: Buffer;
-  expires_utc: number;
-  is_secure: number;
-  is_httponly: number;
-  samesite: number;
+  secure?: boolean;
+  httpOnly?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
+  expires?: number;
+  session?: boolean;
 }
 
-function deriveKey(chromePassword: string): Buffer {
-  return crypto.pbkdf2Sync(chromePassword, SALT, ITERATIONS_MAC, KEY_LENGTH, 'sha1');
+const SKIP_DIRS = new Set([
+  'Service Worker',
+  'Extensions',
+  'IndexedDB',
+  'Local Extension Settings',
+  'Local Storage',
+  'GPUCache',
+  'Shared Dictionary',
+  'SharedCache',
+]);
+
+const SKIP_FILES = new Set([
+  'SingletonLock',
+  'SingletonSocket',
+  'SingletonCookie',
+  'lockfile',
+  'RunningChromeVersion',
+  'History',
+]);
+
+function copyProfileToTemp(srcProfilePath: string): { tempDir: string; tempProfilePath: string } {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-profile-'));
+  const tempProfilePath = path.join(tempDir, 'Default');
+
+  fs.mkdirSync(tempProfilePath, { recursive: true });
+
+  const walk = (srcDir: string, destDir: string): void => {
+    for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+      const srcPath = path.join(srcDir, entry.name);
+      const destPath = path.join(destDir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name)) continue;
+        fs.mkdirSync(destPath, { recursive: true });
+        walk(srcPath, destPath);
+        continue;
+      }
+
+      if (SKIP_FILES.has(entry.name)) continue;
+      fs.copyFileSync(srcPath, destPath);
+    }
+  };
+
+  walk(srcProfilePath, tempProfilePath);
+  return { tempDir, tempProfilePath };
 }
 
-function decryptValue(encryptedValue: Buffer, key: Buffer): string {
-  if (encryptedValue.length === 0) return '';
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Could not allocate a free port'));
+        return;
+      }
+      const port = address.port;
+      server.close(() => resolve(port));
+    });
+    server.on('error', reject);
+  });
+}
 
-  // v10 prefix (3 bytes) indicates AES-CBC encryption on macOS
-  if (encryptedValue[0] === 0x76 && encryptedValue[1] === 0x31 && encryptedValue[2] === 0x30) {
-    const ciphertext = encryptedValue.subarray(3);
+function launchBrowser(browserPath: string, userDataDir: string, debugPort: number): ChildProcess {
+  return spawn(
+    browserPath,
+    [
+      `--remote-debugging-port=${debugPort}`,
+      `--user-data-dir=${userDataDir}`,
+      '--profile-directory=Default',
+      '--headless',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--no-startup-window',
+    ],
+    {
+      stdio: 'ignore',
+      detached: false,
+    },
+  );
+}
+
+async function getWebSocketDebuggerUrl(baseUrl: string): Promise<string> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      const decipher = crypto.createDecipheriv('aes-128-cbc', key, IV);
-      let decrypted = decipher.update(ciphertext);
-      decrypted = Buffer.concat([decrypted, decipher.final()]);
-      return decrypted.toString('utf-8');
-    } catch {
-      return '';
+      const response = await fetch(`${baseUrl}/json/version`);
+      if (!response.ok) {
+        throw new Error(`CDP endpoint returned ${response.status}`);
+      }
+      const data = await response.json() as { webSocketDebuggerUrl?: string };
+      if (!data.webSocketDebuggerUrl) {
+        throw new Error('Missing webSocketDebuggerUrl');
+      }
+      return data.webSocketDebuggerUrl;
+    } catch (err) {
+      lastError = err as Error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
     }
   }
 
-  // Unencrypted or unknown format
-  return encryptedValue.toString('utf-8');
+  throw lastError ?? new Error('Could not resolve WebSocket debugger URL');
 }
 
-function chromeDateToUnix(chromeDate: number): number {
-  if (chromeDate === 0) return 0;
-  // Chrome stores dates as microseconds since 1601-01-01
-  const CHROME_EPOCH_OFFSET = 11644473600;
-  return Math.floor(chromeDate / 1_000_000) - CHROME_EPOCH_OFFSET;
-}
+async function extractCookiesFromBrowser(baseUrl: string): Promise<ImportedCookie[]> {
+  const wsUrl = await getWebSocketDebuggerUrl(baseUrl);
+  const cdp = await cdpForWsUrl(wsUrl);
 
-function sameSiteToString(value: number): 'unspecified' | 'no_restriction' | 'lax' | 'strict' {
-  switch (value) {
-    case -1: return 'unspecified';
-    case 0: return 'no_restriction';
-    case 1: return 'lax';
-    case 2: return 'strict';
-    default: return 'unspecified';
+  try {
+    const result = await cdp.send('Storage.getCookies', {});
+    const cookies = (result as { cookies?: ImportedCookie[] }).cookies ?? [];
+    return cookies;
+  } finally {
+    await cdp.close();
   }
 }
 
-export interface CookieImportResult {
-  imported: number;
-  failed: number;
-  total: number;
+function toElectronSameSite(value: string | undefined): 'unspecified' | 'no_restriction' | 'lax' | 'strict' {
+  switch (value) {
+    case 'Strict':
+      return 'strict';
+    case 'Lax':
+      return 'lax';
+    case 'None':
+      return 'no_restriction';
+    default:
+      return 'unspecified';
+  }
+}
+
+async function importCookiesToSession(
+  cookies: ImportedCookie[],
+  onProgress?: (imported: number, total: number) => void,
+): Promise<{ imported: number; failed: number; total: number }> {
+  const total = cookies.length;
+  let imported = 0;
+  let failed = 0;
+
+  for (const cookie of cookies) {
+    try {
+      const hostname = cookie.domain.replace(/^\./, '');
+      const url = `http${cookie.secure ? 's' : ''}://${hostname}${cookie.path || '/'}`;
+      await session.defaultSession.cookies.set({
+        url,
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        path: cookie.path || '/',
+        secure: !!cookie.secure,
+        httpOnly: !!cookie.httpOnly,
+        sameSite: toElectronSameSite(cookie.sameSite),
+        expirationDate: !cookie.session && cookie.expires ? cookie.expires : undefined,
+      });
+      imported += 1;
+    } catch {
+      failed += 1;
+    }
+
+    onProgress?.(imported, total);
+  }
+
+  return { imported, failed, total };
 }
 
 export async function importChromeCookes(
+  browserPath: string,
   profilePath: string,
   onProgress?: (imported: number, total: number) => void,
-): Promise<CookieImportResult> {
-  mainLogger.info('ChromeCookieImporter.start', { profilePath });
+): Promise<ChromeImportResult> {
+  mainLogger.info('ChromeCookieImporter.start', { browserPath, profilePath });
 
-  // Get Chrome Safe Storage password from macOS Keychain
-  let chromePassword: string;
+  const { tempDir, tempProfilePath } = copyProfileToTemp(profilePath);
+  const debugPort = await getFreePort();
+  const browser = launchBrowser(browserPath, tempDir, debugPort);
+
   try {
-    const keytar = await import('keytar');
-    const pw = await keytar.getPassword('Chrome Safe Storage', 'Chrome');
-    if (!pw) throw new Error('Chrome Safe Storage password not found in Keychain');
-    chromePassword = pw;
-    mainLogger.info('ChromeCookieImporter.keychainRead.ok');
-  } catch (err) {
-    mainLogger.error('ChromeCookieImporter.keychainRead.failed', {
-      error: (err as Error).message,
+    const cookies = await extractCookiesFromBrowser(`http://127.0.0.1:${debugPort}`);
+    const cookieResult = await importCookiesToSession(cookies, onProgress);
+    const { bookmarks, folders } = readChromeBookmarks(tempProfilePath);
+
+    const result: ChromeImportResult = {
+      cookies: cookieResult,
+      bookmarks: { imported: bookmarks.length, folders },
+    };
+
+    mainLogger.info('ChromeCookieImporter.complete', {
+      browserPath,
+      profilePath,
+      cookiesImported: cookieResult.imported,
+      bookmarkCount: bookmarks.length,
     });
-    throw new Error('Could not read Chrome encryption key from Keychain. Grant access when prompted.');
-  }
 
-  const key = deriveKey(chromePassword);
-
-  // Copy the Cookies DB to a temp location to avoid locking issues
-  const cookiesDbPath = path.join(profilePath, 'Cookies');
-  if (!fs.existsSync(cookiesDbPath)) {
-    throw new Error(`Chrome Cookies database not found at ${cookiesDbPath}`);
-  }
-
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-import-'));
-  const tmpDbPath = path.join(tmpDir, 'Cookies');
-  fs.copyFileSync(cookiesDbPath, tmpDbPath);
-
-  // Also copy WAL/SHM if they exist (needed for consistent reads)
-  for (const suffix of ['-wal', '-shm']) {
-    const src = cookiesDbPath + suffix;
-    if (fs.existsSync(src)) {
-      fs.copyFileSync(src, tmpDbPath + suffix);
-    }
-  }
-
-  let imported = 0;
-  let failed = 0;
-  let total = 0;
-
-  try {
-    const Database = (await import('better-sqlite3')).default;
-    const db = new Database(tmpDbPath, { readonly: true });
-
-    const rows = db.prepare(
-      'SELECT host_key, name, path, encrypted_value, expires_utc, is_secure, is_httponly, samesite FROM cookies'
-    ).all() as RawCookie[];
-
-    total = rows.length;
-    mainLogger.info('ChromeCookieImporter.cookiesFound', { total });
-
-    const electronSession = session.defaultSession;
-    const BATCH_SIZE = 100;
-
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE);
-      const promises = batch.map(async (row) => {
-        const value = decryptValue(row.encrypted_value, key);
-        if (!value) {
-          failed++;
-          return;
-        }
-
-        const url = `http${row.is_secure ? 's' : ''}://${row.host_key.replace(/^\./, '')}${row.path}`;
-        const expirationDate = chromeDateToUnix(row.expires_utc);
-
-        try {
-          await electronSession.cookies.set({
-            url,
-            name: row.name,
-            value,
-            domain: row.host_key,
-            path: row.path,
-            secure: row.is_secure === 1,
-            httpOnly: row.is_httponly === 1,
-            sameSite: sameSiteToString(row.samesite),
-            expirationDate: expirationDate > 0 ? expirationDate : undefined,
-          });
-          imported++;
-        } catch {
-          failed++;
-        }
-      });
-
-      await Promise.all(promises);
-      onProgress?.(imported, total);
-    }
-
-    db.close();
+    return result;
   } finally {
-    // Clean up temp files
-    try {
-      fs.rmSync(tmpDir, { recursive: true });
-    } catch { /* ignore cleanup errors */ }
+    browser.kill();
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
-
-  mainLogger.info('ChromeCookieImporter.complete', { imported, failed, total });
-  return { imported, failed, total };
 }
