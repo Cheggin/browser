@@ -38,7 +38,17 @@ interface FakeEntry {
 function makeAPI(initial: FakeEntry[] = []) {
   let entries = [...initial];
   return {
-    query: vi.fn(async () => ({ entries: entries.slice(), totalCount: entries.length })),
+    query: vi.fn(async (opts?: { query?: string; limit?: number; offset?: number }) => {
+      const needle = opts?.query?.trim().toLowerCase();
+      const filtered = needle
+        ? entries.filter((entry) =>
+            entry.title.toLowerCase().includes(needle) ||
+            entry.url.toLowerCase().includes(needle),
+          )
+        : entries.slice();
+
+      return { entries: filtered, totalCount: filtered.length };
+    }),
     remove: vi.fn(async (id: string) => {
       entries = entries.filter((e) => e.id !== id);
       return true;
@@ -112,15 +122,20 @@ describe('HistoryPage', () => {
   it('clicking the row remove button calls historyAPI.remove with the entry id', async () => {
     const api = makeAPI([
       { id: 'doomed', url: 'https://x.com', title: 'Doomed', visitTime: todayAt(9), favicon: null },
+      { id: 'survivor', url: 'https://example.com', title: 'Survivor', visitTime: todayAt(10), favicon: null },
     ]);
     (globalThis as unknown as { historyAPI: typeof api }).historyAPI = api;
 
     render(<HistoryPage />);
-    const removeBtn = await screen.findByRole('button', { name: /remove from history/i });
+    const removeBtn = (await screen.findAllByRole('button', { name: /remove from history/i }))[0];
     await act(async () => {
       fireEvent.click(removeBtn);
     });
     expect(api.remove).toHaveBeenCalledWith('doomed');
+    await waitFor(() => {
+      expect(screen.queryByText('Doomed')).toBeNull();
+      expect(screen.getByText('Survivor')).toBeTruthy();
+    });
   });
 
   it('clicking an entry link calls historyAPI.navigateTo with the URL', async () => {
@@ -136,9 +151,9 @@ describe('HistoryPage', () => {
   });
 
   it('typing in the search box (after debounce) re-issues query with the term', async () => {
-    vi.useFakeTimers();
     const api = makeAPI([
       { id: 'a', url: 'https://x.com', title: 'X', visitTime: todayAt(9), favicon: null },
+      { id: 'b', url: 'https://github.com/repo', title: 'GitHub Repo', visitTime: todayAt(10), favicon: null },
     ]);
     (globalThis as unknown as { historyAPI: typeof api }).historyAPI = api;
 
@@ -152,22 +167,23 @@ describe('HistoryPage', () => {
     const input = screen.getByLabelText(/search history/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'hello' } });
 
-    // Advance past the 250ms debounce
-    await act(async () => {
-      vi.advanceTimersByTime(260);
-    });
-    // Allow the post-state-update fetch to resolve
-    await act(async () => {
-      await Promise.resolve();
+    await waitFor(() => {
+      expect(api.query.mock.calls.length).toBeGreaterThan(callCountBefore);
+      const lastCall = api.query.mock.calls[api.query.mock.calls.length - 1] as unknown as
+        | [{ query?: string } | undefined]
+        | undefined;
+      expect(lastCall?.[0]?.query).toBe('hello');
+      expect(screen.queryByText('X')).toBeNull();
+      expect(screen.queryByText('GitHub Repo')).toBeNull();
+      expect(screen.getByText(/no results found/i)).toBeTruthy();
     });
 
-    expect(api.query.mock.calls.length).toBeGreaterThan(callCountBefore);
-    const lastCall = api.query.mock.calls[api.query.mock.calls.length - 1] as unknown as
-      | [{ query?: string } | undefined]
-      | undefined;
-    expect(lastCall?.[0]?.query).toBe('hello');
+    fireEvent.change(input, { target: { value: 'github' } });
 
-    vi.useRealTimers();
+    await waitFor(() => {
+      expect(screen.queryByText('X')).toBeNull();
+      expect(screen.getByText('GitHub Repo')).toBeTruthy();
+    });
   });
 
   it('switching to the Journeys tab swaps the page content', async () => {
