@@ -6,7 +6,7 @@
  * editable, or password field).
  */
 
-import { Menu, MenuItem, clipboard, shell, type BrowserWindow, type WebContents, type ContextMenuParams } from 'electron';
+import { Menu, MenuItem, clipboard, dialog, type BrowserWindow, type WebContents, type ContextMenuParams } from 'electron';
 import { mainLogger } from '../logger';
 import type { PasswordStore } from '../passwords/PasswordStore';
 
@@ -26,6 +26,33 @@ export function attachContextMenu(wc: WebContents, deps: ContextMenuDeps): void 
       menu.popup({ window: deps.win });
     }
   });
+}
+
+function suggestFilenameFromUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const last = parsed.pathname.split('/').filter(Boolean).pop();
+    return last || 'download';
+  } catch {
+    return 'download';
+  }
+}
+
+async function saveUrlAs(wc: WebContents, win: BrowserWindow, rawUrl: string): Promise<void> {
+  const defaultPath = suggestFilenameFromUrl(rawUrl);
+  const result = await dialog.showSaveDialog(win, {
+    title: 'Save As',
+    defaultPath,
+  });
+
+  if (result.canceled || !result.filePath) {
+    return;
+  }
+
+  wc.session.once('will-download', (_event, item) => {
+    item.setSavePath(result.filePath!);
+  });
+  wc.downloadURL(rawUrl);
 }
 
 function buildMenu(params: ContextMenuParams, wc: WebContents, deps: ContextMenuDeps): Menu {
@@ -107,7 +134,12 @@ function buildLinkMenu(menu: Menu, params: ContextMenuParams, wc: WebContents, d
   }));
   menu.append(new MenuItem({
     label: 'Save Link As…',
-    enabled: false,
+    enabled: true,
+    click: () => {
+      void saveUrlAs(wc, deps.win, params.linkURL).catch((err) => {
+        mainLogger.warn('contextMenu.saveLink.failed', { error: (err as Error).message, url: params.linkURL });
+      });
+    },
   }));
   menu.append(new MenuItem({ type: 'separator' }));
   menu.append(new MenuItem({
@@ -137,7 +169,12 @@ function buildImageMenu(menu: Menu, params: ContextMenuParams, wc: WebContents, 
   }));
   menu.append(new MenuItem({
     label: 'Save Image As…',
-    enabled: false,
+    enabled: true,
+    click: () => {
+      void saveUrlAs(wc, deps.win, params.srcURL).catch((err) => {
+        mainLogger.warn('contextMenu.saveImage.failed', { error: (err as Error).message, url: params.srcURL });
+      });
+    },
   }));
   menu.append(new MenuItem({ type: 'separator' }));
   menu.append(new MenuItem({
