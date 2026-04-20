@@ -1997,12 +1997,13 @@ function PermissionsTab(): React.ReactElement {
 // Search Engines tab
 // ---------------------------------------------------------------------------
 
-function SearchEnginesTab(): React.ReactElement {
+export function SearchEnginesTab(): React.ReactElement {
   const toast = useToast();
   const [engines, setEngines] = useState<SearchEngineEntry[]>([]);
   const [defaultId, setDefaultId] = useState<string>('google');
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [addName, setAddName] = useState('');
   const [addKeyword, setAddKeyword] = useState('');
   const [addSearchUrl, setAddSearchUrl] = useState('');
@@ -2047,6 +2048,22 @@ function SearchEnginesTab(): React.ReactElement {
     }
   }
 
+  function resetEditor(): void {
+    setShowAddForm(false);
+    setEditingId(null);
+    setAddName('');
+    setAddKeyword('');
+    setAddSearchUrl('');
+  }
+
+  function startEdit(engine: SearchEngineEntry): void {
+    setEditingId(engine.id);
+    setShowAddForm(true);
+    setAddName(engine.name);
+    setAddKeyword(engine.keyword);
+    setAddSearchUrl(engine.searchUrl);
+  }
+
   async function handleAdd(): Promise<void> {
     if (!addName.trim() || !addSearchUrl.trim()) {
       toast.show({ variant: 'error', title: 'Name and search URL are required' });
@@ -2062,19 +2079,29 @@ function SearchEnginesTab(): React.ReactElement {
     }
     setSaving(true);
     try {
-      await window.settingsAPI.addCustomSearchEngine({
-        name: addName.trim(),
-        keyword: addKeyword.trim(),
-        searchUrl: addSearchUrl.trim(),
-      });
-      setAddName('');
-      setAddKeyword('');
-      setAddSearchUrl('');
-      setShowAddForm(false);
-      toast.show({ variant: 'success', title: 'Custom search engine added' });
+      if (editingId) {
+        await window.settingsAPI.updateCustomSearchEngine(editingId, {
+          name: addName.trim(),
+          keyword: addKeyword.trim(),
+          searchUrl: addSearchUrl.trim(),
+        });
+        toast.show({ variant: 'success', title: 'Custom search engine updated' });
+      } else {
+        await window.settingsAPI.addCustomSearchEngine({
+          name: addName.trim(),
+          keyword: addKeyword.trim(),
+          searchUrl: addSearchUrl.trim(),
+        });
+        toast.show({ variant: 'success', title: 'Custom search engine added' });
+      }
+      resetEditor();
       void load();
     } catch (err) {
-      toast.show({ variant: 'error', title: 'Failed to add', message: (err as Error).message });
+      toast.show({
+        variant: 'error',
+        title: editingId ? 'Failed to update' : 'Failed to add',
+        message: (err as Error).message,
+      });
     } finally {
       setSaving(false);
     }
@@ -2120,13 +2147,22 @@ function SearchEnginesTab(): React.ReactElement {
               </label>
             </div>
             {!engine.isBuiltIn && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleDelete(engine.id)}
-              >
-                Delete
-              </Button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => startEdit(engine)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleDelete(engine.id)}
+                >
+                  Delete
+                </Button>
+              </div>
             )}
           </div>
         ))}
@@ -2142,7 +2178,9 @@ function SearchEnginesTab(): React.ReactElement {
 
       {showAddForm && (
         <Card variant="outline" padding="md" className="settings-card" style={{ marginTop: 16 }}>
-          <h3 className="settings-label" style={{ marginBottom: 12 }}>Add custom search engine</h3>
+          <h3 className="settings-label" style={{ marginBottom: 12 }}>
+            {editingId ? 'Edit custom search engine' : 'Add custom search engine'}
+          </h3>
 
           <div className="settings-field">
             <label htmlFor="se-add-name" className="settings-label">Name</label>
@@ -2186,7 +2224,7 @@ function SearchEnginesTab(): React.ReactElement {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setShowAddForm(false); setAddName(''); setAddKeyword(''); setAddSearchUrl(''); }}
+              onClick={resetEditor}
               disabled={saving}
             >
               Cancel
@@ -2197,7 +2235,7 @@ function SearchEnginesTab(): React.ReactElement {
               onClick={() => void handleAdd()}
               loading={saving}
             >
-              Add
+              {editingId ? 'Save' : 'Add'}
             </Button>
           </div>
         </Card>
