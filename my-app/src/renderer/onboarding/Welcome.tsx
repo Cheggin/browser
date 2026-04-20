@@ -77,7 +77,7 @@ export function Welcome({ onNext }: WelcomeProps): React.ReactElement {
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <KeyHint keys={['Enter']} size="xs" />
-            <span className="onboarding-eyebrow" style={{ textTransform: 'none', letterSpacing: 0 }}>
+            <span className="onboarding-eyebrow" style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--color-fg-primary)' }}>
               to continue
             </span>
           </div>

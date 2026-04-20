@@ -42,6 +42,8 @@ import { MY_APP_DIR } from './playwright.config';
 
 const LOG_PREFIX = '[ElectronLauncher]';
 const LAUNCH_TIMEOUT_MS = 30_000;
+const SKIP_WINDOW_URL_PATTERNS = ['devtools://', 'chrome-devtools', 'about:blank'];
+const SKIP_WINDOW_TITLES = new Set(['Agent Presence']);
 
 /** Entry point — built by `npm run package` (Electron Forge runs the Vite build during packaging). */
 const MAIN_JS_ENTRY = path.join(MY_APP_DIR, '.vite', 'build', 'main.js');
@@ -144,14 +146,37 @@ export async function launchApp(opts: LaunchOptions = {}): Promise<AppHandle> {
 
   console.log(`${LOG_PREFIX} App launched. Waiting for first window...`);
 
-  const firstWindow = await electronApp.firstWindow();
-  await firstWindow.waitForLoadState('domcontentloaded');
+  const firstWindow = await getPrimaryAppWindow(electronApp);
 
   console.log(
     `${LOG_PREFIX} First window ready. Title: "${await firstWindow.title()}"`,
   );
 
   return { electronApp, firstWindow, userDataDir, cleanupUserData };
+}
+
+function isSkippableWindow(page: Page): Promise<boolean> {
+  return Promise.all([page.title(), Promise.resolve(page.url())]).then(([title, url]) => {
+    if (SKIP_WINDOW_TITLES.has(title)) return true;
+    return SKIP_WINDOW_URL_PATTERNS.some((pattern) => url.startsWith(pattern));
+  });
+}
+
+async function getPrimaryAppWindow(electronApp: ElectronApplication): Promise<Page> {
+  const deadline = Date.now() + 15_000;
+
+  while (Date.now() < deadline) {
+    for (const page of electronApp.windows()) {
+      if (await isSkippableWindow(page)) continue;
+      await page.waitForLoadState('domcontentloaded');
+      return page;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  const fallback = await electronApp.firstWindow();
+  await fallback.waitForLoadState('domcontentloaded');
+  return fallback;
 }
 
 // ---------------------------------------------------------------------------

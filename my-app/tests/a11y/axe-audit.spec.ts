@@ -1,48 +1,48 @@
 /**
- * axe-audit.spec.ts — axe-core accessibility audit across all reachable renderers.
+ * Live axe-core audits across the key Electron renderers.
  *
- * Screens audited (when axe-core is available):
- *   shell-empty          — shell window, no tabs open
- *   onboarding-welcome   — onboarding screen 1
- *   onboarding-naming    — onboarding screen 2 (agent name input)
- *   onboarding-account   — onboarding screen 3 (Google sign-in)
- *   pill-idle            — pill overlay, idle state
- *   settings-api-key     — settings window, API Key tab
- *
- * Reports written to: tests/a11y/reports/<screen>-axe.json
- *
- * axe-core is injected via page.evaluate so no @axe-core/playwright package is
- * needed — only the `axe-core` npm package (provides axe.js / axe.min.js).
- *
- * HOW TO UNBLOCK:
- *   1. Add axe-core to devDependencies:
- *        npm install --save-dev axe-core
- *   2. Delete (or comment out) the test.skip block at the bottom.
- *   3. Un-comment the real test suite above it.
- *   4. Run:  cd my-app && npx playwright test tests/a11y/ --reporter=list
- *
- * Track H Test Engineer owns this file.
+ * Reports are written to tests/a11y/reports/<screen>-axe.json.
  */
 
-import { test, expect } from '@playwright/test';
-import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
-import { _electron as electron } from '@playwright/test';
+import path from 'node:path';
+import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+import type { AxeResults, Result } from 'axe-core';
+import { build as viteBuild } from 'vite';
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+import { launchApp, teardownApp } from '../setup/electron-launcher';
 
 const MY_APP_ROOT = path.resolve(__dirname, '../..');
 const REPORTS_DIR = path.join(__dirname, 'reports');
 const AXE_JS_PATH = path.join(MY_APP_ROOT, 'node_modules', 'axe-core', 'axe.js');
-const ELECTRON_BIN = path.join(MY_APP_ROOT, 'node_modules', '.bin', 'electron');
-const MAIN_JS = path.join(MY_APP_ROOT, '.vite', 'build', 'main.js');
+const SETTINGS_VITE_CONFIG = path.join(MY_APP_ROOT, 'vite.settings.config.mts');
+const ONBOARDING_VITE_CONFIG = path.join(MY_APP_ROOT, 'vite.onboarding.config.mts');
+const SETTINGS_HTML_PATH = path.join(
+  MY_APP_ROOT,
+  'dist',
+  'src',
+  'renderer',
+  'settings',
+  'settings.html',
+);
+const ONBOARDING_HTML_PATH = path.join(
+  MY_APP_ROOT,
+  'dist',
+  'src',
+  'renderer',
+  'onboarding',
+  'onboarding.html',
+);
 
-/** Severity levels that cause test failure */
-const FAIL_SEVERITIES = ['critical', 'serious'] as const;
+const UI_TIMEOUT_MS = 10_000;
+const FAIL_SEVERITIES = new Set(['critical', 'serious']);
+const SHELL_READY_SELECTOR = '[data-testid="tab-strip"], .tab-strip';
+
+const SHELL_URL_PATTERNS = ['shell.html', '/shell/', 'localhost:5173'];
+const SETTINGS_URL_PATTERNS = ['settings.html', '/settings/', 'settings/settings'];
+const SKIP_URL_PATTERNS = ['devtools://', 'chrome-devtools', 'google.com', 'about:blank'];
 
 const COMPLETED_ACCOUNT = JSON.stringify({
   agent_name: 'Aria',
@@ -51,237 +51,393 @@ const COMPLETED_ACCOUNT = JSON.stringify({
   onboarding_completed_at: '2026-01-01T00:00:00.000Z',
 });
 
-// ---------------------------------------------------------------------------
-// axe-core availability check
-// ---------------------------------------------------------------------------
+test.describe.configure({ mode: 'serial' });
+test.setTimeout(90_000);
 
-const AXE_AVAILABLE = fs.existsSync(AXE_JS_PATH);
+interface AuditAppHandle {
+  electronApp: ElectronApplication;
+  firstWindow: Page;
+  userDataDir: string;
+}
 
-// ---------------------------------------------------------------------------
-// Placeholder: axe-core not installed
-//
-// Static analysis audit (iter 16) was completed without axe-core runtime.
-// Results: 6 screens audited, 4 violations found, 4 fixed (0 remaining).
-// See: tests/a11y/RESULTS.md and tests/a11y/reports/axe-2026-04-17.json
-//
-// Fixes applied in iter 16:
-//   1. GoogleScopesModal: replaced div[role=checkbox] nested in div[role=listitem]
-//      with native <label><input type="checkbox" class="sr-only"> pattern (SERIOUS)
-//   2. TabStrip: moved role="tablist" to div.tab-strip__tabs (direct tab parent),
-//      set outer div.tab-strip to role="presentation" (SERIOUS)
-//   3. TabStrip: added type="button" to close and new-tab buttons (SERIOUS)
-//   4. Modal: added type="button" to close button (MODERATE)
-//
-// To enable live axe-core audits:
-//   1. npm install --save-dev axe-core
-//   2. Remove this placeholder block.
-//   3. Un-comment the REAL SUITE section below.
-//   4. Run: npx playwright test tests/a11y/ --reporter=list
-// ---------------------------------------------------------------------------
+function matchesPatterns(url: string, patterns: string[]): boolean {
+  return patterns.some((pattern) => url.includes(pattern));
+}
 
-test.skip(!AXE_AVAILABLE, 'axe-core not installed — run: npm install --save-dev axe-core');
+function isSkipUrl(url: string): boolean {
+  return matchesPatterns(url, SKIP_URL_PATTERNS);
+}
 
-test('axe-audit: install axe-core or @axe-core/playwright first', async () => {
-  // Static analysis completed — 0 violations remaining after iter 16 fixes.
-  // See tests/a11y/RESULTS.md for full report.
-  test.skip(true, 'axe-core not installed — run: npm install --save-dev axe-core');
+async function waitForWindow(
+  electronApp: ElectronApplication,
+  patterns: string[],
+  timeoutMs = 15_000,
+): Promise<Page> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    for (const win of electronApp.windows()) {
+      const url = win.url();
+      if (!isSkipUrl(url) && matchesPatterns(url, patterns)) {
+        await win.waitForLoadState('domcontentloaded');
+        await win.emulateMedia({ reducedMotion: 'reduce' });
+        return win;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  for (const win of electronApp.windows()) {
+    const url = win.url();
+    if (!isSkipUrl(url)) {
+      await win.waitForLoadState('domcontentloaded');
+      await win.emulateMedia({ reducedMotion: 'reduce' });
+      return win;
+    }
+  }
+
+  const fallback = await electronApp.firstWindow();
+  await fallback.waitForLoadState('domcontentloaded');
+  await fallback.emulateMedia({ reducedMotion: 'reduce' });
+  return fallback;
+}
+
+async function getShellWindow(electronApp: ElectronApplication): Promise<Page> {
+  return waitForWindow(electronApp, SHELL_URL_PATTERNS);
+}
+
+async function getSettingsWindow(electronApp: ElectronApplication): Promise<Page | null> {
+  const deadline = Date.now() + 10_000;
+
+  while (Date.now() < deadline) {
+    for (const win of electronApp.windows()) {
+      if (matchesPatterns(win.url(), SETTINGS_URL_PATTERNS)) {
+        await win.waitForLoadState('domcontentloaded');
+        await win.emulateMedia({ reducedMotion: 'reduce' });
+        return win;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  return null;
+}
+
+function createUserDataDir(prefix: string, accountJson?: string): string {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), `axe-audit-${prefix}-`));
+
+  if (accountJson) {
+    fs.writeFileSync(path.join(userDataDir, 'account.json'), accountJson, 'utf-8');
+  }
+
+  return userDataDir;
+}
+
+async function launchAuditApp(options: {
+  prefix: string;
+  accountJson?: string;
+  extraEnv?: Record<string, string>;
+}): Promise<AuditAppHandle> {
+  const userDataDir = createUserDataDir(options.prefix, options.accountJson);
+  const handle = await launchApp({
+    userDataDir,
+    env: {
+      NODE_ENV: 'test',
+      ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+      ...(options.extraEnv ?? {}),
+    },
+    args: ['--remote-debugging-port=0'],
+  });
+
+  await handle.firstWindow.emulateMedia({ reducedMotion: 'reduce' });
+  return {
+    electronApp: handle.electronApp,
+    firstWindow: handle.firstWindow,
+    userDataDir,
+  };
+}
+
+async function cleanupAuditApp(handle: AuditAppHandle): Promise<void> {
+  await teardownApp({
+    electronApp: handle.electronApp,
+    firstWindow: handle.firstWindow,
+    userDataDir: handle.userDataDir,
+    cleanupUserData: false,
+  });
+
+  fs.rmSync(handle.userDataDir, { recursive: true, force: true });
+}
+
+async function ensureSettingsRendererBuilt(): Promise<void> {
+  if (fs.existsSync(SETTINGS_HTML_PATH)) {
+    return;
+  }
+
+  if (!fs.existsSync(SETTINGS_VITE_CONFIG)) {
+    throw new Error(`Settings renderer config not found at ${SETTINGS_VITE_CONFIG}`);
+  }
+
+  await viteBuild({
+    configFile: SETTINGS_VITE_CONFIG,
+    logLevel: 'warn',
+  });
+
+  if (!fs.existsSync(SETTINGS_HTML_PATH)) {
+    throw new Error(`Settings renderer build did not produce ${SETTINGS_HTML_PATH}`);
+  }
+}
+
+async function ensureOnboardingRendererBuilt(): Promise<void> {
+  if (fs.existsSync(ONBOARDING_HTML_PATH)) {
+    return;
+  }
+
+  if (!fs.existsSync(ONBOARDING_VITE_CONFIG)) {
+    throw new Error(`Onboarding renderer config not found at ${ONBOARDING_VITE_CONFIG}`);
+  }
+
+  await viteBuild({
+    configFile: ONBOARDING_VITE_CONFIG,
+    logLevel: 'warn',
+  });
+
+  if (!fs.existsSync(ONBOARDING_HTML_PATH)) {
+    throw new Error(`Onboarding renderer build did not produce ${ONBOARDING_HTML_PATH}`);
+  }
+}
+
+function getFailingViolations(results: AxeResults): Result[] {
+  return results.violations.filter((violation) => FAIL_SEVERITIES.has(violation.impact ?? ''));
+}
+
+function formatViolations(violations: Result[]): string {
+  return JSON.stringify(
+    violations.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      description: violation.description,
+      help: violation.help,
+      helpUrl: violation.helpUrl,
+      nodes: violation.nodes.map((node) => ({
+        target: node.target,
+        failureSummary: node.failureSummary,
+      })),
+    })),
+    null,
+    2,
+  );
+}
+
+async function runAxe(page: Page, screenName: string): Promise<AxeResults> {
+  if (!fs.existsSync(AXE_JS_PATH)) {
+    throw new Error(`axe-core asset missing at ${AXE_JS_PATH}`);
+  }
+
+  await page.addScriptTag({ path: AXE_JS_PATH });
+
+  const results = await page.evaluate(async () => {
+    const axe = (window as Window & {
+      axe: { run: () => Promise<AxeResults> };
+    }).axe;
+
+    return axe.run();
+  });
+
+  fs.mkdirSync(REPORTS_DIR, { recursive: true });
+  fs.writeFileSync(
+    path.join(REPORTS_DIR, `${screenName}-axe.json`),
+    JSON.stringify(results, null, 2),
+    'utf-8',
+  );
+
+  return results;
+}
+
+async function expectNoCriticalOrSeriousViolations(page: Page, screenName: string): Promise<void> {
+  const results = await runAxe(page, screenName);
+  const failingViolations = getFailingViolations(results);
+
+  expect(
+    failingViolations,
+    `${screenName} has ${failingViolations.length} critical/serious axe violations:\n${formatViolations(failingViolations)}`,
+  ).toHaveLength(0);
+}
+
+async function waitForOnboardingMount(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const root = document.querySelector('#onboarding-root');
+    return !!root && root.childElementCount > 0;
+  }, null, { timeout: UI_TIMEOUT_MS });
+}
+
+test('axe-audit: shell-empty', async () => {
+  const handle = await launchAuditApp({
+    prefix: 'shell-empty',
+    accountJson: COMPLETED_ACCOUNT,
+    extraEnv: { SKIP_ONBOARDING: '1' },
+  });
+
+  try {
+    const shellPage = await getShellWindow(handle.electronApp);
+    await shellPage.waitForSelector(SHELL_READY_SELECTOR, { timeout: UI_TIMEOUT_MS });
+    await expectNoCriticalOrSeriousViolations(shellPage, 'shell-empty');
+  } finally {
+    await cleanupAuditApp(handle);
+  }
 });
 
-// ===========================================================================
-// REAL SUITE — un-comment after installing axe-core
-// ===========================================================================
-//
-// import type { AxeResults, Result } from 'axe-core';
-//
-// ---------------------------------------------------------------------------
-// Launch helpers (mirrors capture.spec.ts pattern)
-// ---------------------------------------------------------------------------
-//
-// async function launchApp(opts: {
-//   prefix: string;
-//   accountJson?: string;
-//   extraEnv?: Record<string, string>;
-// }): Promise<{ electronApp: ElectronApplication; page: Page; userDataDir: string }> {
-//   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), `a11y-${opts.prefix}-`));
-//   if (opts.accountJson) {
-//     fs.writeFileSync(path.join(userDataDir, 'account.json'), opts.accountJson, 'utf-8');
-//   }
-//   const electronApp = await electron.launch({
-//     executablePath: ELECTRON_BIN,
-//     args: [MAIN_JS, `--user-data-dir=${userDataDir}`, '--no-sandbox', '--disable-gpu'],
-//     env: {
-//       ...(process.env as Record<string, string>),
-//       NODE_ENV: 'test',
-//       DEV_MODE: '1',
-//       KEYCHAIN_MOCK: '1',
-//       POSTHOG_API_KEY: '',
-//       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
-//       ...opts.extraEnv,
-//     },
-//     timeout: 30_000,
-//     cwd: MY_APP_ROOT,
-//   });
-//   const page = await electronApp.firstWindow();
-//   await page.waitForLoadState('domcontentloaded');
-//   return { electronApp, page, userDataDir };
-// }
-//
-// async function teardown(electronApp: ElectronApplication, userDataDir: string): Promise<void> {
-//   try { await electronApp.close(); } catch { /* no-op */ }
-//   try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch { /* no-op */ }
-// }
-//
-// ---------------------------------------------------------------------------
-// axe inject + run helper
-// ---------------------------------------------------------------------------
-//
-// async function runAxe(page: Page, screenName: string): Promise<AxeResults> {
-//   const axeSource = fs.readFileSync(AXE_JS_PATH, 'utf-8');
-//   await page.evaluate(axeSource);
-//   const results: AxeResults = await page.evaluate(() =>
-//     (window as unknown as { axe: { run(): Promise<AxeResults> } }).axe.run()
-//   );
-//
-//   // Write full report JSON
-//   fs.mkdirSync(REPORTS_DIR, { recursive: true });
-//   const reportPath = path.join(REPORTS_DIR, `${screenName}-axe.json`);
-//   fs.writeFileSync(reportPath, JSON.stringify(results, null, 2), 'utf-8');
-//   console.log(`[a11y] Report written: ${reportPath}`);
-//
-//   return results;
-// }
-//
-// function getFailingViolations(results: AxeResults): Result[] {
-//   return results.violations.filter((v) =>
-//     (FAIL_SEVERITIES as readonly string[]).includes(v.impact ?? '')
-//   );
-// }
-//
-// ---------------------------------------------------------------------------
-// Test: shell-empty
-// ---------------------------------------------------------------------------
-//
-// test('axe-audit: shell-empty', async () => {
-//   const { electronApp, page, userDataDir } = await launchApp({
-//     prefix: 'shell',
-//     accountJson: COMPLETED_ACCOUNT,
-//     extraEnv: { SKIP_ONBOARDING: '1' },
-//   });
-//   try {
-//     await page.waitForSelector('#root', { timeout: 10_000 });
-//     const results = await runAxe(page, 'shell-empty');
-//     const failing = getFailingViolations(results);
-//     expect(failing, `${failing.length} critical/serious violations on shell-empty:\n${JSON.stringify(failing, null, 2)}`).toHaveLength(0);
-//   } finally {
-//     await teardown(electronApp, userDataDir);
-//   }
-// });
-//
-// test('axe-audit: onboarding-welcome', async () => {
-//   const { electronApp, page, userDataDir } = await launchApp({ prefix: 'onboarding-welcome' });
-//   try {
-//     await page.waitForSelector('.onboarding-root, .cta-button', { timeout: 10_000 });
-//     const results = await runAxe(page, 'onboarding-welcome');
-//     const failing = getFailingViolations(results);
-//     expect(failing, `${failing.length} critical/serious violations on onboarding-welcome:\n${JSON.stringify(failing, null, 2)}`).toHaveLength(0);
-//   } finally {
-//     await teardown(electronApp, userDataDir);
-//   }
-// });
-//
-// test('axe-audit: onboarding-naming', async () => {
-//   const { electronApp, page, userDataDir } = await launchApp({ prefix: 'onboarding-naming' });
-//   try {
-//     await page.waitForSelector('.cta-button', { timeout: 10_000 });
-//     await page.locator('.cta-button').first().click();
-//     await page.waitForSelector('input[type="text"]', { timeout: 10_000 });
-//     const results = await runAxe(page, 'onboarding-naming');
-//     const failing = getFailingViolations(results);
-//     expect(failing, `${failing.length} violations on onboarding-naming`).toHaveLength(0);
-//   } finally {
-//     await teardown(electronApp, userDataDir);
-//   }
-// });
-//
-// test('axe-audit: onboarding-account', async () => {
-//   const { electronApp, page, userDataDir } = await launchApp({ prefix: 'onboarding-account' });
-//   try {
-//     await page.waitForSelector('.cta-button', { timeout: 10_000 });
-//     await page.locator('.cta-button').first().click();
-//     const nameInput = page.locator('input[type="text"]').first();
-//     await nameInput.fill('Aria');
-//     await nameInput.press('Enter');
-//     await page.waitForSelector('[data-testid="continue-with-google"], .google-btn', { timeout: 10_000 });
-//     const results = await runAxe(page, 'onboarding-account');
-//     const failing = getFailingViolations(results);
-//     expect(failing, `${failing.length} violations on onboarding-account`).toHaveLength(0);
-//   } finally {
-//     await teardown(electronApp, userDataDir);
-//   }
-// });
-//
-// test('axe-audit: pill-idle', async () => {
-//   const { electronApp, page, userDataDir } = await launchApp({
-//     prefix: 'pill',
-//     accountJson: COMPLETED_ACCOUNT,
-//     extraEnv: { SKIP_ONBOARDING: '1' },
-//   });
-//   try {
-//     await page.waitForSelector('#root', { timeout: 10_000 });
-//     await electronApp.evaluate(() => {
-//       try {
-//         const { BrowserWindow } = require('electron');
-//         BrowserWindow.getAllWindows().forEach((w: Electron.BrowserWindow) => w.webContents.send('pill:toggle'));
-//       } catch { /* no-op */ }
-//     });
-//     await page.waitForTimeout(500);
-//     const windows = electronApp.windows();
-//     let pillPage: Page | null = null;
-//     for (const win of windows) {
-//       if (win.url().includes('pill')) { pillPage = win; break; }
-//     }
-//     const auditPage = pillPage ?? page;
-//     const results = await runAxe(auditPage, 'pill-idle');
-//     const failing = getFailingViolations(results);
-//     expect(failing, `${failing.length} violations on pill-idle`).toHaveLength(0);
-//   } finally {
-//     await teardown(electronApp, userDataDir);
-//   }
-// });
-//
-// test('axe-audit: settings-api-key', async () => {
-//   const { electronApp, page, userDataDir } = await launchApp({
-//     prefix: 'settings',
-//     accountJson: COMPLETED_ACCOUNT,
-//     extraEnv: { SKIP_ONBOARDING: '1' },
-//   });
-//   try {
-//     await page.waitForSelector('#root', { timeout: 10_000 });
-//     await electronApp.evaluate(({ Menu, BrowserWindow }) => {
-//       const menu = Menu.getApplicationMenu();
-//       if (!menu) return;
-//       const win = BrowserWindow.getAllWindows()[0];
-//       function findAndClick(items: Electron.MenuItem[]): boolean {
-//         for (const item of items) {
-//           if (item.label?.includes('Settings')) { item.click(undefined, win, undefined); return true; }
-//           if (item.submenu && findAndClick(item.submenu.items)) return true;
-//         }
-//         return false;
-//       }
-//       findAndClick(menu.items);
-//     });
-//     await page.waitForTimeout(2_000);
-//     const windows = electronApp.windows();
-//     let settingsPage: Page | null = null;
-//     for (const win of windows) {
-//       if (win.url().includes('settings')) { settingsPage = win; break; }
-//     }
-//     if (!settingsPage) throw new Error('Settings window did not open');
-//     await settingsPage.waitForSelector('.settings-shell', { timeout: 10_000 });
-//     const results = await runAxe(settingsPage, 'settings-api-key');
-//     const failing = getFailingViolations(results);
-//     expect(failing, `${failing.length} violations on settings-api-key`).toHaveLength(0);
-//   } finally {
-//     await teardown(electronApp, userDataDir);
-//   }
-// });
+test('axe-audit: onboarding-welcome', async () => {
+  await ensureOnboardingRendererBuilt();
+  const handle = await launchAuditApp({ prefix: 'onboarding-welcome' });
+
+  try {
+    await waitForOnboardingMount(handle.firstWindow);
+    await expect(handle.firstWindow.getByRole('button', { name: /get started with setup/i })).toBeVisible({
+      timeout: UI_TIMEOUT_MS,
+    });
+    await expectNoCriticalOrSeriousViolations(handle.firstWindow, 'onboarding-welcome');
+  } finally {
+    await cleanupAuditApp(handle);
+  }
+});
+
+test('axe-audit: onboarding-import', async () => {
+  await ensureOnboardingRendererBuilt();
+  const handle = await launchAuditApp({ prefix: 'onboarding-import' });
+
+  try {
+    await waitForOnboardingMount(handle.firstWindow);
+    await handle.firstWindow.waitForSelector('.cta-button, .onboarding-root', {
+      timeout: UI_TIMEOUT_MS,
+    });
+    await handle.firstWindow.locator('.cta-button').first().click();
+    await handle.firstWindow.waitForSelector(
+      '.onboarding-headline',
+      { timeout: UI_TIMEOUT_MS },
+    );
+    await expect(handle.firstWindow.getByRole('heading', { name: /import from chrome/i })).toBeVisible();
+    await expectNoCriticalOrSeriousViolations(handle.firstWindow, 'onboarding-import');
+  } finally {
+    await cleanupAuditApp(handle);
+  }
+});
+
+test('axe-audit: onboarding-account', async () => {
+  await ensureOnboardingRendererBuilt();
+  const handle = await launchAuditApp({ prefix: 'onboarding-account' });
+
+  try {
+    await waitForOnboardingMount(handle.firstWindow);
+    await handle.firstWindow.waitForSelector('.cta-button, .onboarding-root', {
+      timeout: UI_TIMEOUT_MS,
+    });
+    await handle.firstWindow.locator('.cta-button').first().click();
+    await expect(handle.firstWindow.getByRole('heading', { name: /import from chrome/i })).toBeVisible();
+    await handle.firstWindow.getByRole('button', { name: /skip/i }).click();
+
+    await handle.firstWindow.waitForSelector(
+      '[aria-label="Continue with Google"], .google-btn',
+      { timeout: UI_TIMEOUT_MS },
+    );
+    await expect(handle.firstWindow.getByRole('heading', { name: /create your account/i })).toBeVisible();
+
+    await expectNoCriticalOrSeriousViolations(handle.firstWindow, 'onboarding-account');
+  } finally {
+    await cleanupAuditApp(handle);
+  }
+});
+
+test('axe-audit: pill-idle', async () => {
+  const handle = await launchAuditApp({
+    prefix: 'pill-idle',
+    accountJson: COMPLETED_ACCOUNT,
+    extraEnv: { SKIP_ONBOARDING: '1' },
+  });
+
+  try {
+    const shellPage = await getShellWindow(handle.electronApp);
+    await shellPage.waitForSelector(SHELL_READY_SELECTOR, { timeout: UI_TIMEOUT_MS });
+
+    await handle.electronApp.evaluate(() => {
+      try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach((win: Electron.BrowserWindow) => {
+          win.webContents.send('pill:toggle');
+        });
+      } catch {
+        // Best effort: if the pill IPC is unavailable the shell window will be audited instead.
+      }
+    });
+
+    await shellPage.waitForTimeout(500);
+
+    const pillPage =
+      handle.electronApp.windows().find((win) => win.url().includes('pill')) ?? shellPage;
+
+    await pillPage.emulateMedia({ reducedMotion: 'reduce' });
+    await expectNoCriticalOrSeriousViolations(pillPage, 'pill-idle');
+  } finally {
+    await cleanupAuditApp(handle);
+  }
+});
+
+test('axe-audit: settings-api-key', async () => {
+  await ensureSettingsRendererBuilt();
+
+  const handle = await launchAuditApp({
+    prefix: 'settings-api-key',
+    accountJson: COMPLETED_ACCOUNT,
+    extraEnv: { SKIP_ONBOARDING: '1' },
+  });
+
+  try {
+    const shellPage = await getShellWindow(handle.electronApp);
+    await shellPage.waitForSelector(SHELL_READY_SELECTOR, { timeout: UI_TIMEOUT_MS });
+
+    await handle.electronApp.evaluate(({ Menu, BrowserWindow }) => {
+      const menu = Menu.getApplicationMenu();
+      if (!menu) {
+        return;
+      }
+
+      const win = BrowserWindow.getAllWindows()[0];
+
+      function findAndClick(items: Electron.MenuItem[]): boolean {
+        for (const item of items) {
+          if (item.label?.includes('Settings')) {
+            item.click(undefined, win ?? undefined, undefined);
+            return true;
+          }
+
+          if (item.submenu && findAndClick(item.submenu.items)) {
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      findAndClick(menu.items);
+    });
+
+    await shellPage.waitForTimeout(2_000);
+
+    const settingsPage = await getSettingsWindow(handle.electronApp);
+    if (!settingsPage) {
+      throw new Error('Settings window did not open');
+    }
+
+    await settingsPage.waitForSelector('.settings-shell', { timeout: UI_TIMEOUT_MS });
+
+    const apiKeyTab = settingsPage.locator('button:has-text("API Key")').first();
+    if (await apiKeyTab.isVisible().catch(() => false)) {
+      await apiKeyTab.click();
+    }
+
+    await expectNoCriticalOrSeriousViolations(settingsPage, 'settings-api-key');
+  } finally {
+    await cleanupAuditApp(handle);
+  }
+});

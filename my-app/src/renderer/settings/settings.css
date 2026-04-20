@@ -63,7 +63,7 @@
 .settings-sidebar-title {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-fg-tertiary);
+  color: var(--color-fg-secondary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }

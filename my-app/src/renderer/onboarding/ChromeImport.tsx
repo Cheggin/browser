@@ -308,7 +308,7 @@ export function ChromeImport({ onNext, onSkip }: ChromeImportProps): React.React
       <div className="onboarding-panel-left">
         <div>
           <h1 className="onboarding-headline">Import from Chrome</h1>
-          <p className="onboarding-subhead" style={{ marginTop: 8 }}>
+          <p className="onboarding-subhead" style={{ marginTop: 8, color: 'var(--color-fg-primary)' }}>
             Bring your cookies, bookmarks, and sessions so you're already logged in everywhere.
           </p>
         </div>
@@ -336,7 +336,7 @@ export function ChromeImport({ onNext, onSkip }: ChromeImportProps): React.React
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <KeyHint keys={['Esc']} size="xs" />
-              <span className="onboarding-eyebrow" style={{ textTransform: 'none', letterSpacing: 0 }}>
+              <span className="onboarding-eyebrow" style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--color-fg-primary)' }}>
                 skip
               </span>
             </div>

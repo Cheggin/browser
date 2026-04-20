@@ -11,9 +11,10 @@
  */
 
 import path from 'node:path';
-import { BrowserWindow, ipcMain, dialog, PrinterInfo } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, PrinterInfo } from 'electron';
 import { mainLogger } from '../logger';
 import type { PrintSettings, PrintPreviewData } from '../../shared/printTypes';
+import { getLocalRendererHtmlPath, isRendererDevUrlReachable } from '../localRendererHtml';
 
 // ---------------------------------------------------------------------------
 // Forge VitePlugin globals (injected at build time)
@@ -346,16 +347,36 @@ export function openPrintPreviewWindow(
     printPreviewWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
-  if (typeof PRINT_PREVIEW_VITE_DEV_SERVER_URL !== 'undefined' && PRINT_PREVIEW_VITE_DEV_SERVER_URL) {
-    const devUrl = `${PRINT_PREVIEW_VITE_DEV_SERVER_URL}/src/renderer/print-preview/print-preview.html`;
-    mainLogger.debug('PrintPreview.loadURL', { url: devUrl });
-    void printPreviewWindow.loadURL(devUrl);
-  } else {
+  const loadRenderer = async (): Promise<void> => {
+    if (
+      process.env.NODE_ENV !== 'test' &&
+      typeof PRINT_PREVIEW_VITE_DEV_SERVER_URL !== 'undefined' &&
+      PRINT_PREVIEW_VITE_DEV_SERVER_URL
+    ) {
+      const devUrl = `${PRINT_PREVIEW_VITE_DEV_SERVER_URL}/src/renderer/print-preview/print-preview.html`;
+      if (await isRendererDevUrlReachable(devUrl)) {
+        mainLogger.debug('PrintPreview.loadURL', { url: devUrl });
+        await printPreviewWindow.loadURL(devUrl);
+        return;
+      }
+      mainLogger.warn('PrintPreview.devServerUnavailable', { url: devUrl });
+    }
+
+    if (!app.isPackaged) {
+      const filePath =
+        getLocalRendererHtmlPath('print-preview', 'print-preview.html') ??
+        path.join(__dirname, '../../src/renderer/print-preview/print-preview.html');
+      mainLogger.debug('PrintPreview.loadFile.dev', { filePath });
+      await printPreviewWindow.loadFile(filePath);
+      return;
+    }
+
     const name = typeof PRINT_PREVIEW_VITE_NAME !== 'undefined' ? PRINT_PREVIEW_VITE_NAME : 'print_preview';
     const filePath = path.join(__dirname, `../../renderer/${name}/print-preview.html`);
     mainLogger.debug('PrintPreview.loadFile', { filePath });
-    void printPreviewWindow.loadFile(filePath);
-  }
+    await printPreviewWindow.loadFile(filePath);
+  };
+  void loadRenderer();
 
   mainLogger.info('PrintPreview.create.ok', { windowId: printPreviewWindow.id });
   return printPreviewWindow;

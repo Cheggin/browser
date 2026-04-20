@@ -123,11 +123,11 @@ export function NamingFlow({ onNext, onBack }: NamingFlowProps): React.ReactElem
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 2 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <KeyHint keys={['Enter']} size="xs" />
-              <span className="onboarding-eyebrow" style={{ textTransform: 'none', letterSpacing: 0 }}>submit</span>
+              <span className="onboarding-eyebrow" style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--color-fg-primary)' }}>submit</span>
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <KeyHint keys={['Esc']} size="xs" />
-              <span className="onboarding-eyebrow" style={{ textTransform: 'none', letterSpacing: 0 }}>back</span>
+              <span className="onboarding-eyebrow" style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--color-fg-primary)' }}>back</span>
             </span>
           </div>
         </form>

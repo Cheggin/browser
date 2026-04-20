@@ -83,7 +83,7 @@ export function AccountCreation({ onBack, onComplete: _onComplete, onScopesSelec
         <div className="onboarding-panel-left">
           <div>
             <h1 className="onboarding-headline">Create your account</h1>
-            <p className="onboarding-subhead" style={{ marginTop: 8 }}>
+            <p className="onboarding-subhead" style={{ marginTop: 8, color: 'var(--color-fg-primary)' }}>
               Sign in to save your preferences and sync across devices.
             </p>
           </div>

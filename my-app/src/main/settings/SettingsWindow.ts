@@ -16,8 +16,9 @@
  */
 
 import path from 'node:path';
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { mainLogger } from '../logger';
+import { getLocalRendererHtmlPath, isRendererDevUrlReachable } from '../localRendererHtml';
 
 // ---------------------------------------------------------------------------
 // Forge VitePlugin globals (injected at build time)
@@ -106,20 +107,39 @@ export function openSettingsWindow(): BrowserWindow {
   }
 
   // Load the settings renderer
-  if (typeof SETTINGS_VITE_DEV_SERVER_URL !== 'undefined' && SETTINGS_VITE_DEV_SERVER_URL) {
-    const url = `${SETTINGS_VITE_DEV_SERVER_URL}/src/renderer/settings/settings.html`;
-    mainLogger.debug('SettingsWindow.loadURL', { url });
-    void settingsWindow.loadURL(url);
-  } else {
-    // Production: load from built file
+  const loadRenderer = async (): Promise<void> => {
+    if (
+      process.env.NODE_ENV !== 'test' &&
+      typeof SETTINGS_VITE_DEV_SERVER_URL !== 'undefined' &&
+      SETTINGS_VITE_DEV_SERVER_URL
+    ) {
+      const url = `${SETTINGS_VITE_DEV_SERVER_URL}/src/renderer/settings/settings.html`;
+      if (await isRendererDevUrlReachable(url)) {
+        mainLogger.debug('SettingsWindow.loadURL', { url });
+        await settingsWindow.loadURL(url);
+        return;
+      }
+      mainLogger.warn('SettingsWindow.devServerUnavailable', { url });
+    }
+
+    if (!app.isPackaged) {
+      const filePath =
+        getLocalRendererHtmlPath('settings', 'settings.html') ??
+        path.join(__dirname, '../../src/renderer/settings/settings.html');
+      mainLogger.debug('SettingsWindow.loadFile.dev', { filePath });
+      await settingsWindow.loadFile(filePath);
+      return;
+    }
+
     const name = typeof SETTINGS_VITE_NAME !== 'undefined' ? SETTINGS_VITE_NAME : 'settings';
     const filePath = path.join(
       __dirname,
       `../../renderer/${name}/settings.html`,
     );
     mainLogger.debug('SettingsWindow.loadFile', { filePath });
-    void settingsWindow.loadFile(filePath);
-  }
+    await settingsWindow.loadFile(filePath);
+  };
+  void loadRenderer();
 
   mainLogger.info('SettingsWindow.create.ok', {
     windowId: settingsWindow.id,

@@ -11,8 +11,9 @@
  */
 
 import path from 'node:path';
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { mainLogger } from '../logger';
+import { getLocalRendererHtmlPath, isRendererDevUrlReachable } from '../localRendererHtml';
 
 declare const PROFILE_PICKER_VITE_DEV_SERVER_URL: string | undefined;
 declare const PROFILE_PICKER_VITE_NAME: string | undefined;
@@ -82,19 +83,39 @@ export function createProfilePickerWindow(): BrowserWindow {
     profilePickerWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
-  if (typeof PROFILE_PICKER_VITE_DEV_SERVER_URL !== 'undefined' && PROFILE_PICKER_VITE_DEV_SERVER_URL) {
-    const url = `${PROFILE_PICKER_VITE_DEV_SERVER_URL}/src/renderer/profile-picker/profile-picker.html`;
-    mainLogger.debug('ProfilePickerWindow.loadURL', { url });
-    void profilePickerWindow.loadURL(url);
-  } else {
+  const loadRenderer = async (): Promise<void> => {
+    if (
+      process.env.NODE_ENV !== 'test' &&
+      typeof PROFILE_PICKER_VITE_DEV_SERVER_URL !== 'undefined' &&
+      PROFILE_PICKER_VITE_DEV_SERVER_URL
+    ) {
+      const url = `${PROFILE_PICKER_VITE_DEV_SERVER_URL}/src/renderer/profile-picker/profile-picker.html`;
+      if (await isRendererDevUrlReachable(url)) {
+        mainLogger.debug('ProfilePickerWindow.loadURL', { url });
+        await profilePickerWindow.loadURL(url);
+        return;
+      }
+      mainLogger.warn('ProfilePickerWindow.devServerUnavailable', { url });
+    }
+
+    if (!app.isPackaged) {
+      const filePath =
+        getLocalRendererHtmlPath('profile-picker', 'profile-picker.html') ??
+        path.join(__dirname, '../../src/renderer/profile-picker/profile-picker.html');
+      mainLogger.debug('ProfilePickerWindow.loadFile.dev', { filePath });
+      await profilePickerWindow.loadFile(filePath);
+      return;
+    }
+
     const name = typeof PROFILE_PICKER_VITE_NAME !== 'undefined' ? PROFILE_PICKER_VITE_NAME : 'profile_picker';
     const filePath = path.join(
       __dirname,
       `../../renderer/${name}/profile-picker.html`,
     );
     mainLogger.debug('ProfilePickerWindow.loadFile', { filePath });
-    void profilePickerWindow.loadFile(filePath);
-  }
+    await profilePickerWindow.loadFile(filePath);
+  };
+  void loadRenderer();
 
   mainLogger.info('ProfilePickerWindow.create.ok', {
     windowId: profilePickerWindow.id,

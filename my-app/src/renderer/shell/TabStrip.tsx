@@ -207,12 +207,10 @@ function TabItem({
 
       {/* Close button — hidden for pinned tabs and icon-only mode */}
       {!isPinned && (
-        <button
-          type="button"
+        <span
           className="tab-item__close"
-          aria-label={`Close ${tab.title || 'tab'}`}
+          aria-hidden="true"
           onClick={onClose}
-          tabIndex={-1}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <path
@@ -222,7 +220,7 @@ function TabItem({
               strokeLinecap="round"
             />
           </svg>
-        </button>
+        </span>
       )}
     </div>
   );
@@ -807,24 +805,24 @@ export function TabStrip({
 
           return elements;
         })()}
-        {/* + button sits right after the last tab (Chrome-style), not pinned right */}
-        <button
-          type="button"
-          className="tab-strip__new-tab"
-          aria-label="New tab"
-          onClick={onNewTab}
-          title="New Tab (Cmd+T)"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-            <path
-              d="M7 3v8M3 7h8"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
       </div>
+      {/* + button sits right after the tablist visually, but outside the tablist semantics */}
+      <button
+        type="button"
+        className="tab-strip__new-tab"
+        aria-label="New tab"
+        onClick={onNewTab}
+        title="New Tab (Cmd+T)"
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path
+            d="M7 3v8M3 7h8"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
 
       {/* Multi-select bulk-action toolbar — appears when 2+ tabs are selected */}
       {selectedTabIds.size > 0 && (

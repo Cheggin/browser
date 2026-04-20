@@ -10,8 +10,9 @@
  */
 
 import path from 'node:path';
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { mainLogger } from '../logger';
+import { getLocalRendererHtmlPath, isRendererDevUrlReachable } from '../localRendererHtml';
 
 // Forge VitePlugin injects these globals at build time.
 // In dev: ONBOARDING_VITE_DEV_SERVER_URL = http://localhost:<port>
@@ -77,20 +78,39 @@ export function createOnboardingWindow(): BrowserWindow {
   }
 
   // Load the onboarding renderer
-  if (typeof ONBOARDING_VITE_DEV_SERVER_URL !== 'undefined' && ONBOARDING_VITE_DEV_SERVER_URL) {
-    const url = `${ONBOARDING_VITE_DEV_SERVER_URL}/src/renderer/onboarding/onboarding.html`;
-    mainLogger.debug('onboardingWindow.loadURL', { url });
-    void win.loadURL(url);
-  } else {
-    // Production: load from built file
+  const loadRenderer = async (): Promise<void> => {
+    if (
+      process.env.NODE_ENV !== 'test' &&
+      typeof ONBOARDING_VITE_DEV_SERVER_URL !== 'undefined' &&
+      ONBOARDING_VITE_DEV_SERVER_URL
+    ) {
+      const url = `${ONBOARDING_VITE_DEV_SERVER_URL}/src/renderer/onboarding/onboarding.html`;
+      if (await isRendererDevUrlReachable(url)) {
+        mainLogger.debug('onboardingWindow.loadURL', { url });
+        await win.loadURL(url);
+        return;
+      }
+      mainLogger.warn('onboardingWindow.devServerUnavailable', { url });
+    }
+
+    if (!app.isPackaged) {
+      const filePath =
+        getLocalRendererHtmlPath('onboarding', 'onboarding.html') ??
+        path.join(__dirname, '../../src/renderer/onboarding/onboarding.html');
+      mainLogger.debug('onboardingWindow.loadFile.dev', { filePath });
+      await win.loadFile(filePath);
+      return;
+    }
+
     const name = typeof ONBOARDING_VITE_NAME !== 'undefined' ? ONBOARDING_VITE_NAME : 'onboarding';
     const filePath = path.join(
       __dirname,
       `../../renderer/${name}/onboarding.html`,
     );
     mainLogger.debug('onboardingWindow.loadFile', { filePath });
-    void win.loadFile(filePath);
-  }
+    await win.loadFile(filePath);
+  };
+  void loadRenderer();
 
   mainLogger.info('onboardingWindow.create.ok', {
     windowId: win.id,

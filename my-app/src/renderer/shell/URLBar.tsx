@@ -280,7 +280,7 @@ export function URLBar({
   return (
     <div className={`url-bar url-bar--${security}`}>
       {/* Security icon */}
-      <span className="url-bar__security" aria-label={security}>
+      <span className="url-bar__security" role="img" aria-label={security}>
         {security === 'secure' && (
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <rect x="2" y="5" width="8" height="6" rx="1.5" fill="currentColor" opacity="0.6" />
@@ -322,7 +322,6 @@ export function URLBar({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         aria-label="Address bar"
-        aria-expanded={dropdownOpen}
         aria-autocomplete="list"
         aria-activedescendant={selectedIndex >= 0 ? `omnibox-item-${selectedIndex}` : undefined}
       />
