@@ -1587,7 +1587,6 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           label: 'Spelling and Grammar',
           submenu: [
             { label: 'Show Spelling and Grammar', role: 'showSubstitutions' as any },
-            { label: 'Check Document Now', enabled: false },
           ],
         },
         {
@@ -2095,10 +2094,6 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
             focusedWin?.webContents.send('name-window-dialog');
           },
         },
-        {
-          label: 'Task Manager',
-          enabled: false,
-        },
         { type: 'separator' },
         { role: 'front' },
       ],
@@ -2388,8 +2383,6 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
         { label: 'View Source', accelerator: 'Ctrl+U', click: () => { tabManager?.openViewSourceForActive(); } },
         { label: 'Developer Tools', accelerator: 'Ctrl+Shift+I', click: () => { tabManager?.toggleDevToolsForActive(); } },
         { label: 'JavaScript Console', accelerator: 'Ctrl+Shift+J', click: () => { tabManager?.openDevToolsConsoleForActive(); } },
-        { type: 'separator' },
-        { label: 'Task Manager', enabled: false },
         { type: 'separator' },
         {
           label: 'Name Window…',

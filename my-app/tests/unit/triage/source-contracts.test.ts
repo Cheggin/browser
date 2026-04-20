@@ -73,6 +73,13 @@ describe('repo wiring regression checks', () => {
     expect(referencesPackageScript).toBe(true);
     expect(pkg.scripts?.package).toBeTypeOf('string');
   });
+
+  it('does not leave disabled dead-end menu entries in Edit or Window menus', () => {
+    const indexSource = readLocal('src/main/index.ts');
+
+    expect(indexSource).not.toContain("{ label: 'Check Document Now', enabled: false }");
+    expect(indexSource).not.toContain("{ label: 'Task Manager', enabled: false }");
+  });
 });
 
 describe('settings content enforcement regression checks', () => {
