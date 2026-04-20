@@ -69,6 +69,11 @@ export const shell = {
   openExternal: (_url: string): Promise<void> => Promise.resolve(),
 };
 
+export const clipboard = {
+  readText: (): string => '',
+  writeText: (_text: string): void => undefined,
+};
+
 export const dialog = {
   showMessageBox: (_opts?: unknown): Promise<{ response: number; checkboxChecked: boolean }> =>
     Promise.resolve({ response: 0, checkboxChecked: false }),
@@ -233,6 +238,7 @@ export default {
   screen,
   nativeImage,
   shell,
+  clipboard,
   dialog,
   safeStorage,
   systemPreferences,

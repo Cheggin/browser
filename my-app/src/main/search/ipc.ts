@@ -7,6 +7,7 @@ import { ipcMain } from 'electron';
 import { SearchEngineStore } from './SearchEngineStore';
 import { assertString } from '../ipc-validators';
 import { mainLogger } from '../logger';
+import { setCustomKeywordEngines } from '../omnibox/providers';
 
 const CHANNELS = [
   'search-engines:list',
@@ -25,6 +26,21 @@ export interface SearchEnginesIpcOptions {
 
 export function registerSearchEngineHandlers(opts: SearchEnginesIpcOptions): void {
   const { store, onDefaultChanged } = opts;
+
+  const syncKeywordEngines = (): void => {
+    const customEngines = Object.fromEntries(
+      store
+        .listAll()
+        .filter((engine) => !engine.isBuiltIn && engine.keyword.trim())
+        .map((engine) => [
+          `@${engine.keyword.trim().toLowerCase()}`,
+          { name: engine.name, template: engine.searchUrl },
+        ]),
+    );
+    setCustomKeywordEngines(customEngines);
+  };
+
+  syncKeywordEngines();
 
   ipcMain.handle('search-engines:list', () => store.listAll());
 
@@ -48,7 +64,9 @@ export function registerSearchEngineHandlers(opts: SearchEnginesIpcOptions): voi
       const name = assertString(payload?.name, 'name', 512);
       const keyword = assertString(payload?.keyword, 'keyword', 64);
       const searchUrl = assertString(payload?.searchUrl, 'searchUrl', 2048);
-      return store.addCustom({ name, keyword, searchUrl });
+      const engine = store.addCustom({ name, keyword, searchUrl });
+      syncKeywordEngines();
+      return engine;
     },
   );
 
@@ -65,6 +83,7 @@ export function registerSearchEngineHandlers(opts: SearchEnginesIpcOptions): voi
       if (payload?.keyword !== undefined) input.keyword = assertString(payload.keyword, 'keyword', 64);
       if (payload?.searchUrl !== undefined) input.searchUrl = assertString(payload.searchUrl, 'searchUrl', 2048);
       const result = store.updateCustom(id, input);
+      if (result) syncKeywordEngines();
       // If the updated engine is (or was) the default, propagate the new template.
       if (result && isDefault && onDefaultChanged) {
         onDefaultChanged(store.getDefault().searchUrl);
@@ -78,6 +97,7 @@ export function registerSearchEngineHandlers(opts: SearchEnginesIpcOptions): voi
     const engineId = assertString(id, 'id', 256);
     const wasDefault = store.getDefault().id === engineId;
     const result = store.removeCustom(engineId);
+    if (result) syncKeywordEngines();
     // If the removed engine was the default, the store falls back to Google
     // internally. Notify active TabManagers of the new default URL.
     if (result && wasDefault && onDefaultChanged) {

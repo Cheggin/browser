@@ -72,6 +72,16 @@ const SEARCH_ENGINES: Record<string, { name: string; template: string }> = {
   '@yahoo': { name: 'Yahoo', template: 'https://search.yahoo.com/search?p=%s' },
 };
 
+let customKeywordEngines: Record<string, { name: string; template: string }> = {};
+
+export function setCustomKeywordEngines(engines: Record<string, { name: string; template: string }>): void {
+  customKeywordEngines = engines;
+}
+
+export function getCustomKeywordEngines(): Record<string, { name: string; template: string }> {
+  return customKeywordEngines;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -418,7 +428,8 @@ export function featuredSearchProvider(
 
 export function keywordProvider(input: string): OmniboxSuggestion[] {
   const trimmed = input.trim();
-  for (const [keyword, engine] of Object.entries(SEARCH_ENGINES)) {
+  const engines = { ...SEARCH_ENGINES, ...customKeywordEngines };
+  for (const [keyword, engine] of Object.entries(engines)) {
     if (trimmed === keyword) {
       // Show mode-enter hint
       return [

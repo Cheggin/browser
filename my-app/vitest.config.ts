@@ -32,6 +32,7 @@ export default defineConfig({
       'tests/unit/history/**/*.spec.tsx',
       'tests/unit/extensions/**/*.spec.ts',
       'tests/unit/extensions/**/*.spec.tsx',
+      'tests/unit/omnibox/**/*.spec.ts',
       'tests/unit/zoom/**/*.spec.ts',
       'tests/unit/shell/**/*.spec.tsx',
       'tests/unit/share/**/*.spec.ts',
