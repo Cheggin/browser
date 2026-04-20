@@ -165,9 +165,22 @@ export class TabManager {
   // to all active windows.
   // ---------------------------------------------------------------------------
   static readonly instances = new Map<number, TabManager>();
+  private static ipcHandlersRegistered = false;
 
   static getAllInstances(): TabManager[] {
     return Array.from(TabManager.instances.values());
+  }
+
+  private static getForSender(sender: Electron.WebContents): TabManager | null {
+    const owner = BrowserWindow.fromWebContents(sender);
+    if (owner) {
+      return TabManager.instances.get(owner.id) ?? null;
+    }
+    const focused = BrowserWindow.getFocusedWindow();
+    if (focused) {
+      return TabManager.instances.get(focused.id) ?? null;
+    }
+    return TabManager.instances.values().next().value ?? null;
   }
 
   private win: BrowserWindow;
@@ -2607,97 +2620,97 @@ export class TabManager {
   // ---------------------------------------------------------------------------
 
   private registerIpcHandlers(): void {
-    ipcMain.handle('tabs:create', (_e, url?: string) => {
-      return this.createTab(url);
+    if (TabManager.ipcHandlersRegistered) return;
+    TabManager.ipcHandlersRegistered = true;
+
+    const managerFor = (event: Electron.IpcMainInvokeEvent): TabManager | null =>
+      TabManager.getForSender(event.sender);
+
+    ipcMain.handle('tabs:create', (event, url?: string) => {
+      return managerFor(event)?.createTab(url) ?? null;
     });
 
-    ipcMain.handle('tabs:close', (_e, tabId: string, force = false) => {
-      this.closeTab(tabId, force);
+    ipcMain.handle('tabs:close', (event, tabId: string, force = false) => {
+      managerFor(event)?.closeTab(tabId, force);
     });
 
-    ipcMain.handle('tabs:activate', (_e, tabId: string) => {
-      this.activateTab(tabId);
+    ipcMain.handle('tabs:activate', (event, tabId: string) => {
+      managerFor(event)?.activateTab(tabId);
     });
 
-    ipcMain.handle('tabs:move', (_e, tabId: string, toIndex: number) => {
-      this.moveTab(tabId, toIndex);
+    ipcMain.handle('tabs:move', (event, tabId: string, toIndex: number) => {
+      managerFor(event)?.moveTab(tabId, toIndex);
     });
 
-    ipcMain.handle('tabs:navigate', (_e, tabId: string, input: string) => {
-      this.navigate(tabId, input);
+    ipcMain.handle('tabs:navigate', (event, tabId: string, input: string) => {
+      managerFor(event)?.navigate(tabId, input);
     });
 
-    ipcMain.handle('tabs:navigate-active', (_e, input: string) => {
-      this.navigateActive(input);
+    ipcMain.handle('tabs:navigate-active', (event, input: string) => {
+      managerFor(event)?.navigateActive(input);
     });
 
-    ipcMain.handle('tabs:back', (_e, tabId: string) => {
-      this.goBack(tabId);
+    ipcMain.handle('tabs:back', (event, tabId: string) => {
+      managerFor(event)?.goBack(tabId);
     });
 
-    ipcMain.handle('tabs:forward', (_e, tabId: string) => {
-      this.goForward(tabId);
+    ipcMain.handle('tabs:forward', (event, tabId: string) => {
+      managerFor(event)?.goForward(tabId);
     });
 
-    ipcMain.handle('tabs:reload', (_e, tabId: string) => {
-      this.reload(tabId);
+    ipcMain.handle('tabs:reload', (event, tabId: string) => {
+      managerFor(event)?.reload(tabId);
     });
 
-    // Issue #25 — hard reload IPC. Preferred path: pass tabId; fallback to
-    // the active tab when no id supplied (Shift-click on reload button in the
-    // shell toolbar uses the tabId form).
-    ipcMain.handle('tabs:reload-hard', (_e, tabId?: string) => {
-      if (tabId) {
-        this.reloadIgnoringCache(tabId);
-      } else {
-        this.reloadActiveIgnoringCache();
-      }
+    ipcMain.handle('tabs:reload-hard', (event, tabId?: string) => {
+      const manager = managerFor(event);
+      if (!manager) return;
+      if (tabId) manager.reloadIgnoringCache(tabId);
+      else manager.reloadActiveIgnoringCache();
     });
 
-    ipcMain.handle('tabs:get-state', () => {
-      return this.getState();
+    ipcMain.handle('tabs:get-state', (event) => {
+      return managerFor(event)?.getState() ?? null;
     });
 
-    ipcMain.handle('tabs:get-active-cdp-url', async () => {
-      return this.getActiveTabCdpUrl();
+    ipcMain.handle('tabs:get-active-cdp-url', async (event) => {
+      return managerFor(event)?.getActiveTabCdpUrl() ?? null;
     });
 
-    ipcMain.handle('tabs:get-active-target-id', async () => {
-      return this.getActiveTabTargetId();
+    ipcMain.handle('tabs:get-active-target-id', async (event) => {
+      return managerFor(event)?.getActiveTabTargetId() ?? null;
     });
 
-    ipcMain.handle('tabs:reopen-last-closed', () => {
-      this.reopenLastClosed();
+    ipcMain.handle('tabs:reopen-last-closed', (event) => {
+      managerFor(event)?.reopenLastClosed();
     });
 
-    ipcMain.handle('tabs:reopen-closed-at', (_e, index: number) => {
-      this.reopenClosedAt(index);
+    ipcMain.handle('tabs:reopen-closed-at', (event, index: number) => {
+      managerFor(event)?.reopenClosedAt(index);
     });
 
-    ipcMain.handle('tabs:get-closed-tabs', () => {
-      return this.getClosedTabs();
+    ipcMain.handle('tabs:get-closed-tabs', (event) => {
+      return managerFor(event)?.getClosedTabs() ?? [];
     });
 
-
-    ipcMain.handle('tabs:mute-tab', (_e, tabId: string) => {
-      this.toggleMuteTab(tabId);
+    ipcMain.handle('tabs:mute-tab', (event, tabId: string) => {
+      managerFor(event)?.toggleMuteTab(tabId);
     });
 
-    ipcMain.handle('tabs:show-context-menu', (_e, tabId: string) => {
-      this.showTabContextMenu(tabId);
+    ipcMain.handle('tabs:show-context-menu', (event, tabId: string) => {
+      managerFor(event)?.showTabContextMenu(tabId);
     });
 
-    ipcMain.handle('tabs:pin', (_e, tabId: string) => {
-      this.pinTab(tabId);
+    ipcMain.handle('tabs:pin', (event, tabId: string) => {
+      managerFor(event)?.pinTab(tabId);
     });
 
-    ipcMain.handle('tabs:unpin', (_e, tabId: string) => {
-      this.unpinTab(tabId);
+    ipcMain.handle('tabs:unpin', (event, tabId: string) => {
+      managerFor(event)?.unpinTab(tabId);
     });
 
-    // Issue #8 — Tab hover card thumbnail
-    ipcMain.handle('tabs:capture-thumbnail', async (_e, tabId: string) => {
-      const view = this.tabs.get(tabId);
+    ipcMain.handle('tabs:capture-thumbnail', async (event, tabId: string) => {
+      const view = managerFor(event)?.tabs.get(tabId);
       if (!view || view.webContents.isDestroyed()) return null;
       try {
         const image = await view.webContents.capturePage({ x: 0, y: 0, width: 560, height: 350 });
@@ -2708,69 +2721,64 @@ export class TabManager {
       }
     });
 
-    // Issue #19 — back/forward long-press history menu
-    ipcMain.handle('tabs:show-back-history', (_e, tabId: string) => {
-      this.showBackHistoryMenu(tabId);
+    ipcMain.handle('tabs:show-back-history', (event, tabId: string) => {
+      managerFor(event)?.showBackHistoryMenu(tabId);
     });
 
-    ipcMain.handle('tabs:show-forward-history', (_e, tabId: string) => {
-      this.showForwardHistoryMenu(tabId);
+    ipcMain.handle('tabs:show-forward-history', (event, tabId: string) => {
+      managerFor(event)?.showForwardHistoryMenu(tabId);
     });
 
-    // Zoom IPC
-    ipcMain.handle('zoom:get-percent', () => {
-      return this.getActiveZoomPercent();
+    ipcMain.handle('zoom:get-percent', (event) => {
+      return managerFor(event)?.getActiveZoomPercent() ?? 100;
     });
 
-    ipcMain.handle('zoom:in', () => {
-      this.zoomInActive();
+    ipcMain.handle('zoom:in', (event) => {
+      managerFor(event)?.zoomInActive();
     });
 
-    ipcMain.handle('zoom:out', () => {
-      this.zoomOutActive();
+    ipcMain.handle('zoom:out', (event) => {
+      managerFor(event)?.zoomOutActive();
     });
 
-    ipcMain.handle('zoom:reset', () => {
-      this.zoomResetActive();
+    ipcMain.handle('zoom:reset', (event) => {
+      managerFor(event)?.zoomResetActive();
     });
 
-    ipcMain.handle('zoom:list-overrides', () => {
-      return this.getZoomOverrides();
+    ipcMain.handle('zoom:list-overrides', (event) => {
+      return managerFor(event)?.getZoomOverrides() ?? [];
     });
 
-    ipcMain.handle('zoom:remove-override', (_e, origin: string) => {
-      return this.removeZoomOverride(origin);
+    ipcMain.handle('zoom:remove-override', (event, origin: string) => {
+      return managerFor(event)?.removeZoomOverride(origin) ?? false;
     });
 
-    ipcMain.handle('zoom:clear-all', () => {
-      this.clearAllZoomOverrides();
+    ipcMain.handle('zoom:clear-all', (event) => {
+      managerFor(event)?.clearAllZoomOverrides();
     });
 
-    // Find-in-page IPC. The renderer is the source of truth for the query and
-    // direction; main just proxies to webContents and forwards 'found-in-page'
-    // events back via the 'find-result' channel (see attachViewEvents).
-    ipcMain.handle('find:start', (_e, text: string) => {
-      this.findInActiveTab(text ?? '', false, true);
+    ipcMain.handle('find:start', (event, text: string) => {
+      managerFor(event)?.findInActiveTab(text ?? '', false, true);
     });
 
-    ipcMain.handle('find:next', () => {
-      this.findNextInActiveTab();
+    ipcMain.handle('find:next', (event) => {
+      managerFor(event)?.findNextInActiveTab();
     });
 
-    ipcMain.handle('find:prev', () => {
-      this.findPreviousInActiveTab();
+    ipcMain.handle('find:prev', (event) => {
+      managerFor(event)?.findPreviousInActiveTab();
     });
 
-    ipcMain.handle('find:stop', () => {
-      this.stopFindInActiveTab('clearSelection');
+    ipcMain.handle('find:stop', (event) => {
+      managerFor(event)?.stopFindInActiveTab('clearSelection');
     });
 
-    ipcMain.handle('find:get-last-query', () => {
-      return this.getActiveTabLastFindQuery();
+    ipcMain.handle('find:get-last-query', (event) => {
+      return managerFor(event)?.getActiveTabLastFindQuery() ?? '';
     });
 
-    ipcMain.handle('security:get-page-info', () => {
-      const url = this.getActiveTabUrl() ?? '';
+    ipcMain.handle('security:get-page-info', (event) => {
+      const url = managerFor(event)?.getActiveTabUrl() ?? '';
       const hstsEntry = getHSTSEntry(url);
       return {
         url,
@@ -2781,14 +2789,15 @@ export class TabManager {
       };
     });
 
-    ipcMain.handle('security:get-cookie-count', async () => {
-      const url = this.getActiveTabUrl() ?? '';
-      if (!url) return 0;
+    ipcMain.handle('security:get-cookie-count', async (event) => {
+      const manager = managerFor(event);
+      const url = manager?.getActiveTabUrl() ?? '';
+      if (!url || !manager) return 0;
       try {
-        const activeView = this.activeTabId ? this.tabs.get(this.activeTabId) : null;
+        const activeView = manager.activeTabId ? manager.tabs.get(manager.activeTabId) : null;
         const session = activeView
           ? activeView.webContents.session
-          : this.win.webContents.session;
+          : manager.win.webContents.session;
         const cookies = await session.cookies.get({ url });
         return cookies.length;
       } catch {
@@ -2848,5 +2857,6 @@ export class TabManager {
     ipcMain.removeHandler('find:get-last-query');
     ipcMain.removeHandler('security:get-page-info');
     ipcMain.removeHandler('security:get-cookie-count');
+    TabManager.ipcHandlersRegistered = false;
   }
 }
