@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 
 const linkHoverListeners: Array<(payload: { url: string }) => void> = [];
+const fullscreenListeners: Array<(payload: { isFullscreen: boolean }) => void> = [];
 
 vi.mock('../../../src/renderer/shell/PopupLayerContext', () => ({
   PopupLayerProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -50,6 +51,7 @@ declare global {
 beforeEach(() => {
   cleanup();
   linkHoverListeners.length = 0;
+  fullscreenListeners.length = 0;
 
   globalThis.electronAPI = {
     tabs: {
@@ -152,7 +154,10 @@ beforeEach(() => {
         return () => undefined;
       }),
       nameWindowDialog: vi.fn(() => () => undefined),
-      fullscreenChanged: vi.fn(() => () => undefined),
+      fullscreenChanged: vi.fn((cb: (payload: { isFullscreen: boolean }) => void) => {
+        fullscreenListeners.push(cb);
+        return () => undefined;
+      }),
       liveCaptionStateChanged: vi.fn(() => () => undefined),
     },
     liveCaption: {
@@ -186,6 +191,27 @@ describe('WindowChrome hovered link status bar', () => {
 
     await waitFor(() => {
       expect(screen.getByText('https://hover.example/path')).toBeTruthy();
+    });
+  });
+});
+
+describe('WindowChrome fullscreen chrome visibility', () => {
+  it('applies the fullscreen chrome class when the shell receives a fullscreenChanged event', async () => {
+    const { container } = render(<WindowChrome />);
+
+    expect(fullscreenListeners).toHaveLength(1);
+    expect(container.firstElementChild?.className).not.toContain('window-chrome--fullscreen');
+
+    fullscreenListeners[0]({ isFullscreen: true });
+
+    await waitFor(() => {
+      expect(container.firstElementChild?.className).toContain('window-chrome--fullscreen');
+    });
+
+    fullscreenListeners[0]({ isFullscreen: false });
+
+    await waitFor(() => {
+      expect(container.firstElementChild?.className).not.toContain('window-chrome--fullscreen');
     });
   });
 });
