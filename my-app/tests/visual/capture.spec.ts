@@ -215,6 +215,7 @@ async function launchApp(opts: {
     args: [
       MAIN_JS,
       `--user-data-dir=${userDataDir}`,
+      '--remote-debugging-port=0',
       '--no-sandbox',
       '--disable-gpu',
     ],
@@ -307,8 +308,8 @@ async function screenshot(page: Page, stateName: string, notes?: string): Promis
 // ---------------------------------------------------------------------------
 // The settings renderer is NOT built by `npm run build` when running the
 // capture harness standalone (Forge VitePlugin only runs during `npm run start`
-// or `npm run make`).  We pre-build it here so SettingsWindow.ts can loadFile
-// from .vite/renderer/settings/settings.html at test time.
+// or `npm run make`). We pre-build it here so SettingsWindow.ts can resolve
+// the emitted .vite renderer artifact at test time.
 // Option B from the unskip plan — runs fast (<500ms, cached modules).
 
 test.beforeAll(async () => {
@@ -318,7 +319,7 @@ test.beforeAll(async () => {
     return;
   }
   const outDir = path.join(MY_APP_ROOT, '.vite', 'renderer', 'settings');
-  const htmlPath = path.join(outDir, 'settings.html');
+  const htmlPath = path.join(outDir, 'src', 'renderer', 'settings', 'settings.html');
 
   // Skip if already built (common in watch-mode re-runs)
   if (fs.existsSync(htmlPath)) {

@@ -733,7 +733,7 @@ async function runDiff(): Promise<void> {
   log('info', 'Starting visual QA diff', { states: STATE_DEFINITIONS.length });
 
   // Read capture manifest if available
-  const manifestPath = path.join(CAPTURES_DIR, 'manifest.json');
+  const manifestPath = path.join(REFERENCES_DIR, 'manifest.json');
   let manifest: Array<{ state: string; captured_at: string; success: boolean }> = [];
   if (fs.existsSync(manifestPath)) {
     try {
