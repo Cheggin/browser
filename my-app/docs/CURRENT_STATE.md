@@ -15,7 +15,7 @@
 | Regression: preload-path | Playwright (e2e suite) | PASS | 5 / 5 | Guards contextBridge surface |
 | E2E Playwright | Playwright | PASS | 24 passed, 10 skipped | agent-task-wiki, crash-recovery, golden-path, multi-instance, pill-flow, etc. |
 | Python pytest | pytest | PASS | 252 passed, 1 skipped | 7 test files |
-| Visual capture | Playwright visual-qa | PARTIAL | 10 / 15 success | 5 settings screens blocked (known) |
+| Visual capture | Playwright visual-qa | PARTIAL | 15 / 15 settings/onboarding-shell states verified on current branch | Settings capture path repaired; OAuth scopes still require real auth for the separate modal state |
 | TypeScript typecheck | tsc | PASS* | 0 src errors | *All errors in node_modules type defs (TS 4.5 + @types/node mismatch); skipLibCheck in tsconfig |
 | ESLint | eslint | PARTIAL | 29 errors (pre-existing), 190 warnings | 5 errors fixed this sweep; 29 remain in renderer/test/daemon files |
 
@@ -57,11 +57,11 @@
 | pill-streaming | SUCCESS | 1280×800 |
 | pill-done | SUCCESS | 1280×800 |
 | pill-error | SUCCESS | 1280×800 |
-| settings-api-key | FAIL (Settings window unreachable in test env) | 0×0 |
-| settings-agent | FAIL (Settings window unreachable in test env) | 0×0 |
-| settings-appearance | FAIL (Settings window unreachable in test env) | 0×0 |
-| settings-scopes | FAIL (Settings window unreachable in test env) | 0×0 |
-| settings-danger-zone | FAIL (Settings window unreachable in test env) | 0×0 |
+| settings-api-key | SUCCESS | 720×560 |
+| settings-agent | SUCCESS | 720×560 |
+| settings-appearance | SUCCESS | 720×560 |
+| settings-scopes | SUCCESS | 720×560 |
+| settings-danger-zone | SUCCESS | 720×560 |
 
 **Baselines refreshed this sweep:** 10 (all successful captures re-written with new timestamps)
 **Baseline date:** 2026-04-17T12:57 UTC

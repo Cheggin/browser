@@ -223,11 +223,11 @@ Check `/Users/reagan/Documents/GitHub/desktop-app/memory/project_electron_forge_
 - See `my-app/python/agent/budget.py` for limits
 - Set `ANTHROPIC_API_KEY` — daemon will not run without it
 
-### Settings window doesn't open
+### Settings window troubleshooting
 
-- Try `npm run dev:settings` — opens shell + Settings side-by-side
-- Check for errors in terminal — preload or IPC bridge issues
-- Verify CSP allows `data:` URIs (for inline styles)
+- `npm run dev:settings` still opens shell + Settings side-by-side for debugging
+- If Settings fails in a local test harness, check the renderer build/output path first
+- Verify CSP still allows the inline/local renderer bootstrap used by non-packaged test runs
 
 ## Contributing
 
