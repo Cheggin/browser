@@ -54,6 +54,44 @@ No preload.js emitted as a separate file — preload source (`src/preload.ts`) i
 
 **Status: MEASURED (iter 15) — 828ms mean, 846ms p95. Target <2000ms. PASS (58% headroom).**
 
+### Evaluation commands
+
+The repo now has a reusable startup perf evaluation system on top of the existing Playwright startup spec:
+
+```bash
+cd my-app
+npm run perf:startup
+```
+
+Runs the raw startup spec.
+
+```bash
+cd my-app
+npm run perf:startup:eval
+```
+
+Runs the startup spec and writes structured artifacts under `tests/results/perf/startup/<timestamp>/`:
+- `startup-result.json`
+- `summary.json`
+- `summary.md`
+
+```bash
+cd my-app
+npm run perf:startup:loop
+```
+
+Runs the evaluator repeatedly and writes a loop summary under `tests/results/perf/loops/`.
+
+Budgets live in:
+- `tests/perf/startup-budgets.json`
+
+Accept the current run as the new baseline:
+
+```bash
+cd my-app
+node scripts/perf/run-startup-eval.mjs --accept-baseline
+```
+
 ### Cold-launch results (5 runs, run 1 dropped as warmup)
 
 | Milestone                   | Mean  | p95   | Target   | Status |

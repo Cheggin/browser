@@ -1,0 +1,8 @@
+{
+  "startup": {
+    "spawnToNetworkIdleP95MaxMs": 2000
+  },
+  "memory": {
+    "totalRssMaxMB": 800
+  }
+}

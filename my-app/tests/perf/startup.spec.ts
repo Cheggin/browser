@@ -61,6 +61,23 @@ const SKIP_URL_PATTERNS = ['devtools://', 'chrome-devtools', 'about:blank'];
 
 const LOG_PREFIX = '[perf:startup]';
 
+const PERF_BUDGETS_PATH = path.join(__dirname, 'startup-budgets.json');
+
+interface PerfBudgets {
+  startup: {
+    spawnToNetworkIdleP95MaxMs: number;
+  };
+  memory: {
+    totalRssMaxMB: number;
+  };
+}
+
+function readPerfBudgets(): PerfBudgets {
+  return JSON.parse(fs.readFileSync(PERF_BUDGETS_PATH, 'utf-8')) as PerfBudgets;
+}
+
+const PERF_BUDGETS = readPerfBudgets();
+
 function log(msg: string): void {
   console.log(`${LOG_PREFIX} ${msg}`);
 }
@@ -101,6 +118,33 @@ interface MemorySnapshot {
   pid: number;
   rssKB: number;
   comm: string;
+}
+
+interface StartupPerfArtifact {
+  schemaVersion: 1;
+  generatedAt: string;
+  environment: {
+    platform: string;
+    arch: string;
+    node: string;
+    launches: number;
+    warmupDropped: number;
+  };
+  budgets: PerfBudgets;
+  stats: {
+    spawnToFirstWindow: ReturnType<typeof stats>;
+    spawnToDomReady: ReturnType<typeof stats>;
+    spawnToNetworkIdle: ReturnType<typeof stats>;
+    windowToNetworkIdle: ReturnType<typeof stats>;
+  };
+  samples: {
+    all: LaunchSample[];
+    warm: LaunchSample[];
+  };
+  memory: {
+    totalRssMB: number | null;
+    lastRunSnapshots: MemorySnapshot[];
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -358,10 +402,12 @@ test.describe('Startup performance', () => {
     log(`Dropped run 1 (warmup). Analysing ${warmSamples.length} runs.`);
 
     // Compute stats for each milestone
-    const firstWindowStats   = stats(warmSamples.map((s) => s.spawnToFirstWindow));
-    const domReadyStats      = stats(warmSamples.map((s) => s.spawnToDomReady));
-    const networkIdleStats   = stats(warmSamples.map((s) => s.spawnToNetworkIdle));
-    const windowToIdleStats  = stats(warmSamples.map((s) => s.windowToNetworkIdle));
+    const firstWindowStats = stats(warmSamples.map((s) => s.spawnToFirstWindow));
+    const domReadyStats = stats(warmSamples.map((s) => s.spawnToDomReady));
+    const networkIdleStats = stats(warmSamples.map((s) => s.spawnToNetworkIdle));
+    const windowToIdleStats = stats(warmSamples.map((s) => s.windowToNetworkIdle));
+    let totalRssMB: number | null = null;
+    let lastMem: MemorySnapshot[] = [];
 
     // Print results table
     console.log('\n');
@@ -378,9 +424,9 @@ test.describe('Startup performance', () => {
     // Memory summary
     if (allMemSnapshots.length > 0) {
       // Flatten all memory snapshots from last run
-      const lastMem = allMemSnapshots[allMemSnapshots.length - 1];
+      lastMem = allMemSnapshots[allMemSnapshots.length - 1] ?? [];
       const totalRssKB = lastMem.reduce((s, m) => s + m.rssKB, 0);
-      const totalRssMB = Math.round(totalRssKB / 1024);
+      totalRssMB = Math.round(totalRssKB / 1024);
       console.log('\n  MEMORY (RSS) — last run snapshot:');
       console.log('  Process                       | RSS (MB)');
       for (const m of lastMem) {
@@ -403,6 +449,39 @@ test.describe('Startup performance', () => {
       warmSamples,
     };
 
+    const resultsPath = process.env['PERF_RESULTS_PATH'];
+    if (resultsPath) {
+      const artifact: StartupPerfArtifact = {
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        environment: {
+          platform: process.platform,
+          arch: process.arch,
+          node: process.version,
+          launches: N_LAUNCHES,
+          warmupDropped: 1,
+        },
+        budgets: PERF_BUDGETS,
+        stats: {
+          spawnToFirstWindow: firstWindowStats,
+          spawnToDomReady: domReadyStats,
+          spawnToNetworkIdle: networkIdleStats,
+          windowToNetworkIdle: windowToIdleStats,
+        },
+        samples: {
+          all: allSamples,
+          warm: warmSamples,
+        },
+        memory: {
+          totalRssMB,
+          lastRunSnapshots: lastMem,
+        },
+      };
+      fs.mkdirSync(path.dirname(resultsPath), { recursive: true });
+      fs.writeFileSync(resultsPath, JSON.stringify(artifact, null, 2), 'utf-8');
+      log(`Wrote structured perf artifact to ${resultsPath}`);
+    }
+
     log('Measurements complete.');
   });
 
@@ -420,13 +499,13 @@ test.describe('Startup performance', () => {
 
     const p95networkIdle = results.networkIdleStats.p95;
     const mean = results.networkIdleStats.mean;
-    log(`Asserting p95 spawn→networkidle = ${p95networkIdle}ms < 2000ms`);
+    log(`Asserting p95 spawn→networkidle = ${p95networkIdle}ms < ${PERF_BUDGETS.startup.spawnToNetworkIdleP95MaxMs}ms`);
     log(`Mean spawn→networkidle = ${mean}ms`);
 
     expect(
       p95networkIdle,
-      `p95 cold startup (spawn→networkidle) is ${p95networkIdle}ms — target is <2000ms`,
-    ).toBeLessThan(2000);
+      `p95 cold startup (spawn→networkidle) is ${p95networkIdle}ms — target is <${PERF_BUDGETS.startup.spawnToNetworkIdleP95MaxMs}ms`,
+    ).toBeLessThan(PERF_BUDGETS.startup.spawnToNetworkIdleP95MaxMs);
   });
 
   test('total memory RSS < 800 MB (realistic target for 3-window Electron)', async () => {
@@ -444,10 +523,10 @@ test.describe('Startup performance', () => {
       return;
     }
 
-    log(`Asserting total RSS = ${totalMB} MB < 800 MB`);
+    log(`Asserting total RSS = ${totalMB} MB < ${PERF_BUDGETS.memory.totalRssMaxMB} MB`);
     expect(
       totalMB,
-      `Total Electron RSS is ${totalMB} MB — target is <800 MB`,
-    ).toBeLessThan(800);
+      `Total Electron RSS is ${totalMB} MB — target is <${PERF_BUDGETS.memory.totalRssMaxMB} MB`,
+    ).toBeLessThan(PERF_BUDGETS.memory.totalRssMaxMB);
   });
 });
