@@ -7,7 +7,7 @@
 ruff>=0.7.0
 
 # Static type checking
-mypy>=1.11.0
+mypy>=1.20.2
 
 # Test coverage
 pytest-cov>=5.0.0
